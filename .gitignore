@@ -169,3 +169,6 @@ random.sh
 
 # editor
 .vscode/
+
+# checkpoints
+checkpoints/
