@@ -72,8 +72,8 @@ def main():
 
     print("#--- Loading Dataset ---#")
     # dataset = datasets.load_dataset("fusing/wikiart_captions")
-    training_dataset = wds.WebDataset(urls="/home/nousr/data/image/laion/laion_samples_{0000..0004}.tar").shuffle(1000).decode("pil", handler=wds.handlers.warn_and_continue).to_tuple("jpg", "txt")
-    validation_dataset = wds.WebDataset(urls="/home/nousr/data/image/laion/laion_samples_0005.tar").shuffle(1000).decode("pil", handler=wds.handlers.warn_and_continue).to_tuple("jpg", "txt")
+    training_dataset = wds.WebDataset(urls="/home/nousr/data/image/laion_coyo_local/{00000..00048}.tar").shuffle(1000).decode("pil", handler=wds.handlers.warn_and_continue).to_tuple("jpg", "txt")
+    validation_dataset = wds.WebDataset(urls="/home/nousr/data/image/laion_coyo_local/00049.tar").shuffle(1000).decode("pil", handler=wds.handlers.warn_and_continue).to_tuple("jpg", "txt")
 
     # set the tokenizer for the dataloader
     collate = partial(collate_fn, language_model.tokenize_text)
@@ -86,7 +86,7 @@ def main():
         pin_memory=False,
     )
     valid_dataloader = DataLoader(
-        dataset=training_dataset,
+        dataset=validation_dataset,
         collate_fn=collate,
         batch_size=BATCH_SIZE,
         num_workers=32,
