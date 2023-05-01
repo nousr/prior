@@ -1,7 +1,9 @@
 import torch
 import wandb
-from tqdm import tqdm
 import lightning.pytorch as pl
+
+from tqdm import tqdm
+from pprint import pprint
 
 from einops import repeat, rearrange
 from torch.nn.functional import cosine_similarity
@@ -10,13 +12,20 @@ from prior.prior_transformer import PriorTransformer
 from prior.gaussian_diffusion import NoiseScheduler
 from prior.adapter import BaseClipAdapter
 
+
+def l2norm(t):
+    return torch.nn.functional.normalize(t, dim=-1)
+
+
 def exists(val):
     return val is not None
+
 
 def default(val, d):
     if exists(val):
         return val
     return d() if callable(d) else d
+
 
 def set_module_requires_grad_(module, requires_grad):
     for param in module.parameters():
@@ -162,7 +171,7 @@ class DiffusionPrior(pl.LightningModule):
         )
 
         if self.trainer.is_global_zero:
-            wandb.log({"loss": loss})
+            wandb.log({"training/loss": loss})
 
         # forward pass
         return loss
@@ -184,12 +193,18 @@ class DiffusionPrior(pl.LightningModule):
     def p_mean_variance(self, x, t, text_embedding, text_encoding, cond_scale):
         # TODO: check that model was trained with dropout
         # TODO: do classifier free guidance
-        predicted_tokens = self.prior_transformer.forward(x, t, text_embedding, text_encoding)
+        predicted_tokens = self.prior_transformer.forward(
+            x, t, text_embedding, text_encoding
+        )
 
         if self.parameterization == "v":
-            x_start = self.noise_scheduler.predict_start_from_v(x, t=t, v=predicted_tokens)
+            x_start = self.noise_scheduler.predict_start_from_v(
+                x, t=t, v=predicted_tokens
+            )
         elif self.parameterization == "x0":
-            x_start = self.noise_scheduler.predict_start_from_noise(x, t=t, noise=predicted_tokens)
+            x_start = self.noise_scheduler.predict_start_from_noise(
+                x, t=t, noise=predicted_tokens
+            )
         elif self.parameterization == "eps":
             x_start = predicted_tokens
         else:
@@ -197,7 +212,9 @@ class DiffusionPrior(pl.LightningModule):
                 f"parameterization must be one of ['eps', 'x0', 'v'] but got {self.parameterization}"
             )
 
-        model_mean, _, posterior_log_variance = self.noise_scheduler.q_posterior(x_start=x_start, x_t=x, t=t)
+        model_mean, _, posterior_log_variance = self.noise_scheduler.q_posterior(
+            x_start=x_start, x_t=x, t=t
+        )
 
         return model_mean, posterior_log_variance
 
@@ -210,7 +227,9 @@ class DiffusionPrior(pl.LightningModule):
         noise = torch.randn_like(x)
 
         # only noise if t > 0
-        nonzero_mask = (1 - (t == 0).float()).reshape(x.shape[0], *((1,) * (len(x.shape) - 1)))
+        nonzero_mask = (1 - (t == 0).float()).reshape(
+            x.shape[0], *((1,) * (len(x.shape) - 1))
+        )
         pred_x = model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
         return pred_x
@@ -224,11 +243,11 @@ class DiffusionPrior(pl.LightningModule):
         device = text_embedding.device
 
         # initialize the image embedding
-        image_embed = torch.randn(size=(batch_size, self.prior_transformer.clip_dim)).to(device)
+        image_embed = torch.randn(
+            size=(batch_size, self.prior_transformer.clip_dim)
+        ).to(device)
 
-        for step in tqdm(
-            range(steps)[::-1], desc="ddpm sampling loop", total=steps
-        ):
+        for step in tqdm(range(steps)[::-1], desc="ddpm sampling loop", total=steps):
             times = torch.full(size=(batch_size,), fill_value=step).to(device)
             image_embed = self.p_sample(
                 x=image_embed,
@@ -291,22 +310,27 @@ class DiffusionPrior(pl.LightningModule):
         image_embedding = rearrange(image_embedding, "(b r) ... -> b r ...", r=best_of)
 
         # find the cosine similarity with the caption
-        cosine_similarity = self.find_cosine_similarity(emb_0=text_embedding, emb_1=image_embedding)
+        cosine_similarity = torch.einsum(
+            "b r d, b r d -> b r", l2norm(text_embedding), l2norm(image_embedding)
+        )
 
         # find the best image embedding for each caption
         top_indices = cosine_similarity.topk(k=1).indices
-        top_indices = repeat(top_indices, 'b 1 -> b 1 d', d=image_embedding.shape[-1])
+        top_indices = repeat(top_indices, "b 1 -> b 1 d", d=image_embedding.shape[-1])
 
         # gather the best image embeddings
         best_image_embeddings = image_embedding.gather(dim=1, index=top_indices)
 
         return rearrange(best_image_embeddings, "b 1 ... -> b ...")
 
-
     @torch.no_grad()
     def validation_step(self, batch, _):
         # get the text embedding and encoding
         image, tokenized_caption = batch
+
+        image = image[:32, ...]
+        tokenized_caption = tokenized_caption[:32, ...]
+
         text_embedding, text_encoding = self.language_model.embed_text(
             tokenized_caption
         )
@@ -325,12 +349,11 @@ class DiffusionPrior(pl.LightningModule):
         # ------------------------------
         predicted_image_embeddings = self.sample(
             tokenized_text=tokenized_caption,
-            cond_scale=self.cond_scale,
         )
         # ------------------------------
 
         # ------------------------------------------------------------------
-        # compute the average/min/max cosine similarity between:
+        # compute the average cosine similarity between:
         # ------------------------------------------------------------------
         #   - the text embedding and the original image embedding
         #   - the text embedding and the sampled image embedding
@@ -338,18 +361,18 @@ class DiffusionPrior(pl.LightningModule):
         # ------------------------------------------------------------------
         cosine_sim_report = {}
         for name, emb_0, emb_1 in [
-            ("text_image", text_embedding, image_embedding),
-            ("text_sample", text_embedding, predicted_image_embeddings),
-            ("sample_image", predicted_image_embeddings, image_embedding),
+            ("similarity/text_image", text_embedding, image_embedding),
+            ("similarity/sample_text", text_embedding, predicted_image_embeddings),
+            ("similarity/sample_image", predicted_image_embeddings, image_embedding),
         ]:
             cosine_sim = self.find_cosine_similarity(emb_0=emb_0, emb_1=emb_1)
-            cosine_sim_report[f"{name}_avg"] = cosine_sim.mean()
-            cosine_sim_report[f"{name}_min"] = cosine_sim.min()
-            cosine_sim_report[f"{name}_max"] = cosine_sim.max()
+            cosine_sim_report[f"{name}_avg"] = cosine_sim.mean().item()
         # ------------------------------------------------------------------
 
         if self.trainer.is_global_zero:
-            wandb.log({"val_loss": loss, **cosine_sim_report})
+            wandb.log({"validation/loss": loss, **cosine_sim_report})
+            print() # newline for readability
+            pprint(cosine_sim_report)
 
         return loss
 
