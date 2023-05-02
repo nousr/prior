@@ -100,6 +100,13 @@ class DiffusionPrior(pl.LightningModule):
             text_enc=text_encoding,
         )
 
+        # pred = self.prior_transformer.forward(
+        #     image_embed=noised_image_embedding,
+        #     diffusion_timesteps=timesteps,
+        #     text_embed=text_embedding,
+        #     text_encodings=text_encoding,
+        # )
+
         # calculate the loss, depending on the parameterization
         if self.parameterization == "eps":
             target = noise
@@ -197,16 +204,23 @@ class DiffusionPrior(pl.LightningModule):
             x, t, text_embedding, text_encoding
         )
 
+        # predicted_tokens = self.prior_transformer.forward(
+        #     image_embed=x,
+        #     diffusion_timesteps=t,
+        #     text_embed=text_embedding,
+        #     text_encodings=text_encoding,
+        # )
+
         if self.parameterization == "v":
             x_start = self.noise_scheduler.predict_start_from_v(
                 x, t=t, v=predicted_tokens
             )
         elif self.parameterization == "x0":
-            x_start = self.noise_scheduler.predict_start_from_noise(
-                x, t=t, noise=predicted_tokens
-            )
-        elif self.parameterization == "eps":
             x_start = predicted_tokens
+        elif self.parameterization == "eps":
+            x_start = self.noise_scheduler.predict_start_from_noise(
+                x_t=x, t=t, noise=predicted_tokens
+            )
         else:
             raise ValueError(
                 f"parameterization must be one of ['eps', 'x0', 'v'] but got {self.parameterization}"
@@ -243,12 +257,12 @@ class DiffusionPrior(pl.LightningModule):
         device = text_embedding.device
 
         # initialize the image embedding
-        image_embed = torch.randn(
-            size=(batch_size, self.prior_transformer.clip_dim)
-        ).to(device)
+        image_embed = torch.randn(size=(batch_size, 512)).to(device)
 
         for step in tqdm(range(steps)[::-1], desc="ddpm sampling loop", total=steps):
-            times = torch.full(size=(batch_size,), fill_value=step).to(device)
+            times = torch.full(
+                size=(batch_size,), fill_value=step, device=device, dtype=torch.long
+            )
             image_embed = self.p_sample(
                 x=image_embed,
                 t=times,
@@ -275,6 +289,9 @@ class DiffusionPrior(pl.LightningModule):
                 steps=steps,
             )
 
+        if self.scale_image_embedding:
+            image_embedding /= self.language_model.dim_latent**0.5
+
         return image_embedding
 
     @torch.no_grad()
@@ -292,7 +309,7 @@ class DiffusionPrior(pl.LightningModule):
         steps = default(steps, self.noise_scheduler.num_timesteps)
 
         # repeat the tokenized text N times
-        tokenized_text = repeat(tokenized_text, "b ... -> (b r) ...", r=best_of)
+        # tokenized_text = repeat(tokenized_text, "b ... -> (b r) ...", r=best_of)
 
         # embed the text
         text_embedding, text_encoding = self.language_model.embed_text(tokenized_text)
@@ -304,30 +321,30 @@ class DiffusionPrior(pl.LightningModule):
             cond_scale=cond_scale,
             steps=steps,
         )
+        # # reshape the embeddings to be (batch_size, best_of, ...)
+        # text_embedding = rearrange(text_embedding, "(b r) ... -> b r ...", r=best_of)
+        # image_embedding = rearrange(image_embedding, "(b r) ... -> b r ...", r=best_of)
 
-        # reshape the embeddings to be (batch_size, best_of, ...)
-        text_embedding = rearrange(text_embedding, "(b r) ... -> b r ...", r=best_of)
-        image_embedding = rearrange(image_embedding, "(b r) ... -> b r ...", r=best_of)
+        # # find the cosine similarity with the caption
+        # cosine_similarity = torch.einsum(
+        #     "b r d, b r d -> b r", l2norm(text_embedding), l2norm(image_embedding)
+        # )
 
-        # find the cosine similarity with the caption
-        cosine_similarity = torch.einsum(
-            "b r d, b r d -> b r", l2norm(text_embedding), l2norm(image_embedding)
-        )
+        # # find the best image embedding for each caption
+        # top_indices = cosine_similarity.topk(k=1).indices
+        # top_indices = repeat(top_indices, "b 1 -> b 1 d", d=image_embedding.shape[-1])
 
-        # find the best image embedding for each caption
-        top_indices = cosine_similarity.topk(k=1).indices
-        top_indices = repeat(top_indices, "b 1 -> b 1 d", d=image_embedding.shape[-1])
+        # # gather the best image embeddings
+        # best_image_embeddings = image_embedding.gather(dim=1, index=top_indices)
 
-        # gather the best image embeddings
-        best_image_embeddings = image_embedding.gather(dim=1, index=top_indices)
-
-        return rearrange(best_image_embeddings, "b 1 ... -> b ...")
+        return image_embedding
 
     @torch.no_grad()
     def validation_step(self, batch, _):
         # get the text embedding and encoding
         image, tokenized_caption = batch
 
+        # only sample 32 validation prompts
         image = image[:32, ...]
         tokenized_caption = tokenized_caption[:32, ...]
 
@@ -371,7 +388,7 @@ class DiffusionPrior(pl.LightningModule):
 
         if self.trainer.is_global_zero:
             wandb.log({"validation/loss": loss, **cosine_sim_report})
-            print() # newline for readability
+            print()  # newline for readability
             pprint(cosine_sim_report)
 
         return loss

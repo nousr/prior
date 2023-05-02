@@ -245,6 +245,9 @@ class PriorTransformer(pl.LightningModule):
         self.clip_dim = clip_dim
         self.ext_len = 4
 
+        self.dim = emb_dim
+        self.self_cond = False
+
         self.time_embed = nn.Sequential(
             nn.Linear(emb_dim, emb_dim),
             nn.SiLU(),
