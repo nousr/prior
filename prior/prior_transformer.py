@@ -133,6 +133,8 @@ class ResidualAttentionBlock(pl.LightningModule):
         dropout: float = 0.0,
         mlp_expansion_factor: int = 4,
         mlp_hidden_depth: int = 1,
+        norm_in: bool = True,
+        norm_out: bool = True,
     ):
         super(ResidualAttentionBlock, self).__init__()
         self.attn = CausalSelfAttention(
@@ -141,8 +143,8 @@ class ResidualAttentionBlock(pl.LightningModule):
             bias=bias,
             dropout=dropout,
         )
-        self.ln_1 = LayerNorm(emb_dim)
-        self.ln_2 = LayerNorm(emb_dim)
+        self.ln_1 = LayerNorm(emb_dim) if norm_in else nn.Identity()
+        self.ln_2 = LayerNorm(emb_dim) if norm_out else nn.Identity()
         self.mlp = MLP(
             dim_in=emb_dim,
             dim_out=emb_dim,
