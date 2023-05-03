@@ -146,6 +146,8 @@ class DiffusionPrior(pl.LightningModule):
         # scale the image embedding
         if self.scale_image_embedding:
             image_embedding *= self.language_model.dim_latent**0.5
+            # text_embedding *= self.language_model.dim_latent**0.5
+            # text_encoding *= self.language_model.dim_latent**0.5
 
         # send to p_losses & return loss
         return self.p_losses(
@@ -166,7 +168,6 @@ class DiffusionPrior(pl.LightningModule):
         text_embedding, text_encoding = self.language_model.embed_text(
             tokenized_caption
         )
-
         # get the image embedding
         # TODO: try conditioning on the image encoding as well
         image_embedding, _ = self.language_model.embed_image(image)

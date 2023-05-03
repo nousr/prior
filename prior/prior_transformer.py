@@ -1,34 +1,10 @@
+import math
 import torch
 import torch.nn.functional as F
 import lightning.pytorch as pl
+from rotary_embedding_torch import RotaryEmbedding
 
 from torch import nn
-
-
-def timestep_embedding(steps, emb_dim, max_period=10000):
-    """
-    Creates a sinusoidal embedding of the given `steps`.
-
-    Args:
-        steps (Tensor): A 1-D Tensor of `N` indices, one per batch element. These may be fractional.
-        emb_dim (int): The dimension of the output embeddings.
-        max_period (float, optional): The maximum period of the sinusoidal func. Controls the minimum freq. of the embeddings.
-
-    Returns:
-        Tensor: A [N x emb_dim] Tensor of sinusoidal embeddings, where each element is a function of the corresponding `steps`.
-    """
-    device = steps.device
-    half = emb_dim // 2
-    freqs = torch.exp(
-        -torch.log(torch.tensor(max_period, device=device, dtype=torch.float32))
-        * torch.arange(start=0, end=half, device=device, dtype=torch.float32)
-        / half
-    )
-    args = steps.unsqueeze(-1).float() * freqs.unsqueeze(0)
-    embedding = torch.cat((torch.cos(args), torch.sin(args)), dim=-1)
-    if emb_dim % 2:
-        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-    return embedding
 
 
 class LayerNorm(nn.LayerNorm):
@@ -114,6 +90,7 @@ class CausalSelfAttention(pl.LightningModule):
         self.resid_dropout = nn.Dropout(dropout)
         self.num_heads = num_heads
         self.emb_dim = emb_dim
+        self.rotary_emb = RotaryEmbedding(dim=32)
 
     def forward(self, x):
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
@@ -129,6 +106,8 @@ class CausalSelfAttention(pl.LightningModule):
         value = value.view(batch_size, -1, self.num_heads, head_dim).transpose(1, 2)
 
         dropout = self.dropout if self.training else 0.0
+
+        query, key = map(self.rotary_emb.rotate_queries_or_keys, (query, key))
 
         y = F.scaled_dot_product_attention(
             query,
@@ -235,6 +214,7 @@ class PriorTransformer(pl.LightningModule):
         dropout=0.0,
         ml_expansion_factor=4,
         mlp_hidden_depth=1,
+        num_diffusion_timesteps=1000,
     ):
         super(PriorTransformer, self).__init__()
 
@@ -248,15 +228,22 @@ class PriorTransformer(pl.LightningModule):
         self.dim = emb_dim
         self.self_cond = False
 
-        self.time_embed = nn.Sequential(
-            nn.Linear(emb_dim, emb_dim),
-            nn.SiLU(),
-            nn.Linear(emb_dim, emb_dim),
+        self.to_time_embed = nn.Embedding(num_diffusion_timesteps, emb_dim)
+
+        needs_projection = clip_dim != emb_dim
+
+        self.text_enc_proj = (
+            nn.Linear(clip_dim, emb_dim) if needs_projection else nn.Identity()
         )
-        self.text_enc_proj = nn.Linear(clip_dim, emb_dim)
-        self.text_emb_proj = nn.Linear(clip_dim, emb_dim)
-        self.clip_img_proj = nn.Linear(clip_dim, emb_dim)
+        self.text_emb_proj = (
+            nn.Linear(clip_dim, emb_dim) if needs_projection else nn.Identity()
+        )
+        self.clip_img_proj = (
+            nn.Linear(clip_dim, emb_dim) if needs_projection else nn.Identity()
+        )
+
         self.out_proj = nn.Linear(emb_dim, clip_dim)
+
         self.transformer = Transformer(
             emb_dim=emb_dim,
             num_layers=num_layers,
@@ -266,18 +253,10 @@ class PriorTransformer(pl.LightningModule):
             mlp_expansion_factor=ml_expansion_factor,
             mlp_hidden_depth=mlp_hidden_depth,
         )
-        if final_ln:
-            self.final_ln = LayerNorm(emb_dim)
-        else:
-            self.final_ln = None
 
-        self.positional_embedding = nn.Parameter(
-            torch.empty(1, ctx_len + self.ext_len, emb_dim)
-        )
+        self.final_ln = LayerNorm(clip_dim) if final_ln else nn.Identity()
+
         self.prd_emb = nn.Parameter(torch.randn((1, 1, emb_dim)))
-
-        nn.init.normal_(self.prd_emb, std=0.01)
-        nn.init.normal_(self.positional_embedding, std=0.01)
 
     def forward(
         self,
@@ -288,7 +267,7 @@ class PriorTransformer(pl.LightningModule):
     ):
         bsz = x.shape[0]
 
-        time_emb = self.time_embed(timestep_embedding(timesteps, self.emb_dim))
+        time_emb = self.to_time_embed(timesteps)
         text_enc = self.text_enc_proj(text_enc)
         text_emb = self.text_emb_proj(text_emb)
         x = self.clip_img_proj(x)
@@ -302,13 +281,13 @@ class PriorTransformer(pl.LightningModule):
         ]
 
         input = torch.cat(input_seq, dim=1)
-        pos_emb = self.positional_embedding.to(input.dtype)
-        input = input + pos_emb  # (B, ctx_len+4, emb_dim)
+        # pos_emb = self.positional_embedding.to(input.dtype)
+        # input = input + pos_emb  # (B, ctx_len+4, emb_dim)
         out = self.transformer(input)
 
-        if self.final_ln is not None:
-            out = self.final_ln(out)
+        out = self.final_ln(out)
 
-        out = self.out_proj(out[:, -1])
+        # pull the last "token" which is our prediction
+        out = self.out_proj(out[..., -1, :])
 
         return out
