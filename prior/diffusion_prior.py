@@ -385,7 +385,11 @@ class DiffusionPrior(pl.LightningModule):
         for name, emb_0, emb_1 in [
             ("similarity/text_image", text_embedding, image_embedding),
             ("similarity/sample_text", text_embedding, predicted_image_embeddings),
-            ("similarity/sample_unrelated_text", unrelated_text_embedding, predicted_image_embeddings),
+            (
+                "similarity/sample_unrelated_text",
+                unrelated_text_embedding,
+                predicted_image_embeddings,
+            ),
             ("similarity/sample_image", predicted_image_embeddings, image_embedding),
         ]:
             cosine_sim = self.find_cosine_similarity(emb_0=emb_0, emb_1=emb_1)

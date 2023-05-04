@@ -9,12 +9,6 @@ from torchvision.transforms.functional import center_crop, pil_to_tensor
 from open_clip import tokenize
 from prior import DiffusionPrior, NoiseScheduler, OpenClipAdapter, PriorTransformer
 
-# from dalle2_pytorch import (
-#     DiffusionPriorNetwork,
-#     DiffusionPrior,
-#     OpenClipAdapter,
-# )
-
 BATCH_SIZE = 256
 CLIP_DIM = 512
 CLIP_CONTEXT = 77
@@ -46,6 +40,7 @@ def collate_fn(tokenizer, batch):
 
     return images, captions
 
+
 def main():
     print("#--- Creating Model ---#")
     prior_xf = PriorTransformer(
@@ -58,19 +53,11 @@ def main():
         dropout=0.00,
     )
 
-    # prior_xf = DiffusionPriorNetwork(
-    #     dim=512, heads=12, depth=12, normformer=False, rotary_emb=False, max_text_len=77
-    # ).cuda()
-
     scheduler = NoiseScheduler(beta_schedule="cosine", timesteps=1000, loss_type="l2")
 
     language_model = OpenClipAdapter(
         path="hf-hub:laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
     )
-    # language_model = OpenClipAdapter(
-    #     name="ViT-B-32",
-    #     pretrained="laion2b_s34b_b79k"
-    # ).cuda()
 
     prior = DiffusionPrior(
         prior_transformer=prior_xf,
@@ -79,13 +66,6 @@ def main():
         parameterization=PARAMETERIZATION,
         scale_image_embedding=SCALE_IMAGE_EMBEDDING,
     )
-
-    # prior = DiffusionPrior(
-    #     net=prior_xf,
-    #     clip=language_model,
-    #     timesteps=1000,
-    #     image_embed_dim=512,
-    # ).cuda()
 
     optimizer = torch.optim.Adam(prior.parameters(), lr=3e-4)
 
@@ -127,7 +107,7 @@ def main():
     trainer = Trainer(
         max_steps=-1,
         max_epochs=1,
-        precision="32-true", # bf16-mixed
+        precision="32-true",  # bf16-mixed
         accumulate_grad_batches=1,
         val_check_interval=256,
         limit_val_batches=1,
@@ -140,8 +120,6 @@ def main():
         train_dataloaders=train_dataloader,
         val_dataloaders=valid_dataloader,
     )
-
-    # train(prior, train_dataloader, valid_dataloader, optimizer)
 
 
 if __name__ == "__main__":
