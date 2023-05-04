@@ -9,7 +9,7 @@ from einops import repeat, rearrange
 from torch.nn.functional import cosine_similarity
 from omegaconf import OmegaConf
 
-from prior.utils import instantiate_from_config
+from prior.utils import instantiate_from_config, get_obj_from_str
 
 
 def l2norm(t):
@@ -56,7 +56,8 @@ class DiffusionPrior(pl.LightningModule):
         self,
         parameterization,
         scale_embeddings,
-        optimizer_params,
+        optimizer_config,
+        lr_scheduler_config,
         language_model_config,
         noise_scheduler_config,
         prior_transformer_config,
@@ -73,7 +74,9 @@ class DiffusionPrior(pl.LightningModule):
         self.language_model = instantiate_from_config(language_model_config)
         freeze_model_and_make_eval_(self.language_model)
 
-        self.optimizer_params = OmegaConf.to_container(optimizer_params)
+        self.optimizer_config = optimizer_config
+        self.lr_scheduler_config = lr_scheduler_config
+
         self.parameterization = parameterization
         self.scale_embeddings = scale_embeddings
 
@@ -403,4 +406,13 @@ class DiffusionPrior(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), **self.optimizer_params)
+        optimizer = get_obj_from_str(self.optimizer_config.target)(
+            self.parameters(), **self.optimizer_config.get("params", dict())
+        )
+        scheduler = get_obj_from_str(self.lr_scheduler_config.target)(
+            optimizer, **self.lr_scheduler_config.get("params", dict())
+        )
+
+        schedulers = [{"scheduler": scheduler, "interval": "step", "frequency": 1}]
+
+        return [optimizer], schedulers
