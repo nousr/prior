@@ -256,7 +256,7 @@ class PriorTransformer(pl.LightningModule):
             mlp_hidden_depth=mlp_hidden_depth,
         )
 
-        self.final_ln = LayerNorm(clip_dim) if final_ln else nn.Identity()
+        self.final_ln = LayerNorm(emb_dim) if final_ln else nn.Identity()
 
         self.prd_emb = nn.Parameter(torch.randn((1, 1, emb_dim)))
 
