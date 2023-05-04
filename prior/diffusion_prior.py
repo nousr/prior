@@ -7,11 +7,10 @@ from pprint import pprint
 
 from einops import repeat, rearrange
 from torch.nn.functional import cosine_similarity
+from omegaconf import OmegaConf
 
-from prior.prior_transformer import PriorTransformer
-from prior.gaussian_diffusion import NoiseScheduler
-from prior.adapter import BaseClipAdapter
 from prior.utils import instantiate_from_config
+
 
 def l2norm(t):
     return torch.nn.functional.normalize(t, dim=-1)
@@ -57,6 +56,7 @@ class DiffusionPrior(pl.LightningModule):
         self,
         parameterization,
         scale_embeddings,
+        optimizer_params,
         language_model_config,
         noise_scheduler_config,
         prior_transformer_config,
@@ -73,6 +73,7 @@ class DiffusionPrior(pl.LightningModule):
         self.language_model = instantiate_from_config(language_model_config)
         freeze_model_and_make_eval_(self.language_model)
 
+        self.optimizer_params = OmegaConf.to_container(optimizer_params)
         self.parameterization = parameterization
         self.scale_embeddings = scale_embeddings
 
@@ -136,9 +137,15 @@ class DiffusionPrior(pl.LightningModule):
 
         # scale the image embedding
         if self.scale_embeddings:
-            image_embedding = l2norm(image_embedding) * self.language_model.dim_latent**0.5
-            text_embedding = l2norm(text_embedding) * self.language_model.dim_latent**0.5
-            text_encoding = l2norm(text_encoding) * self.language_model.dim_latent**0.5
+            image_embedding = (
+                l2norm(image_embedding) * self.language_model.dim_latent**0.5
+            )
+            text_embedding = (
+                l2norm(text_embedding) * self.language_model.dim_latent**0.5
+            )
+            text_encoding = (
+                l2norm(text_encoding) * self.language_model.dim_latent**0.5
+            )
 
         # send to p_losses & return loss
         return self.p_losses(
@@ -301,8 +308,12 @@ class DiffusionPrior(pl.LightningModule):
         text_embedding, text_encoding = self.language_model.embed_text(tokenized_text)
 
         if self.scale_embeddings:
-            text_embedding = l2norm(text_embedding) * self.language_model.dim_latent**0.5
-            text_encoding = l2norm(text_encoding) * self.language_model.dim_latent**0.5
+            text_embedding = (
+                l2norm(text_embedding) * self.language_model.dim_latent**0.5
+            )
+            text_encoding = (
+                l2norm(text_encoding) * self.language_model.dim_latent**0.5
+            )
 
         # predict the image embedding
         image_embedding = self.p_sample_loop(
@@ -392,5 +403,4 @@ class DiffusionPrior(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=3e-4)
-        return optimizer
+        return torch.optim.AdamW(self.parameters(), **self.optimizer_params)

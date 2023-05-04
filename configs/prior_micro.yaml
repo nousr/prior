@@ -3,6 +3,11 @@ model:
   params:
     parameterization: "x0"
     scale_embeddings: true
+    optimizer_params:
+        lr: 2e-4
+        betas: [0.9, 0.999]
+        eps: 1e-08
+        weight_decay: 0.01
     language_model_config:
       target: "prior.adapter.OpenClipAdapter"
       params:
