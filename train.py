@@ -46,96 +46,16 @@ def collate_fn(tokenizer, batch):
 
     return images, captions
 
-
-def train(prior: DiffusionPrior, train_dataloader, validation_dataloader, optimizer):
-    import wandb
-
-    wandb.init(project="prior-testing")
-
-    for step, batch in enumerate(train_dataloader):
-        prior.train()
-        optimizer.zero_grad()
-
-        images, captions = batch
-        images = images.cuda()
-        captions = captions.cuda()
-
-        text_embedding, text_encoding = prior.language_model.embed_text(captions)
-        image_embedding, _ = prior.language_model.embed_image(images)
-
-        loss = prior.forward(
-            text_embedding=text_embedding,
-            text_encoding=text_encoding,
-            image_embedding=image_embedding,
-        )
-        loss.backward()
-        optimizer.step()
-
-        print(f"Step: {step} | Loss: {loss.item()}")
-        wandb.log({"training/loss": loss.item()})
-
-        if step % 250 == 0:
-            # sample images
-            prior.eval()
-            with torch.no_grad():
-                sample = next(iter(validation_dataloader))
-                images, captions = sample
-                images = images.cuda()
-                captions = captions.cuda()
-
-                text_embedding, text_encoding = prior.language_model.embed_text(
-                    captions
-                )
-                image_embedding, _ = prior.language_model.embed_image(images)
-
-                val_loss = prior.forward(
-                    text_embedding=text_embedding,
-                    text_encoding=text_encoding,
-                    image_embedding=image_embedding,
-                )
-                print(f"\nValidation Loss: {val_loss.item()}\n")
-
-                predicted_emb = prior.sample(tokenized_text=captions)
-
-                # embed the images and captions
-                image_embeds, _ = prior.language_model.embed_image(images)
-                text_embeds, _ = prior.language_model.embed_text(captions)
-
-                # compute the cosine similarity
-                text_image_sim = torch.nn.functional.cosine_similarity(
-                    image_embeds, text_embeds
-                )
-                sample_text_sim = torch.nn.functional.cosine_similarity(
-                    predicted_emb, text_embeds
-                )
-                sample_image_sim = torch.nn.functional.cosine_similarity(
-                    predicted_emb, image_embeds
-                )
-
-                print(f"\nText-Image Similarity: {text_image_sim.mean().item()}")
-                print(f"Sample-Text Similarity: {sample_text_sim.mean().item()}")
-                print(f"Sample-Image Similarity: {sample_image_sim.mean().item()}\n")
-
-                # log the images
-                wandb.log(
-                    {
-                        "similarity/sample_text_avg": sample_text_sim.mean().item(),
-                        "similarity/sample_image_avg": sample_image_sim.mean().item(),
-                        "similarity/text_image_avg": text_image_sim.mean().item(),
-                        "validation/loss": val_loss.item(),
-                    }
-                )
-
-
 def main():
     print("#--- Creating Model ---#")
     prior_xf = PriorTransformer(
         ctx_len=CLIP_CONTEXT,
-        emb_dim=768,
-        num_layers=12,
-        num_heads=12,
+        emb_dim=512,
+        num_layers=8,
+        num_heads=8,
         final_ln=True,
         clip_dim=CLIP_DIM,
+        dropout=0.00,
     )
 
     # prior_xf = DiffusionPriorNetwork(
@@ -173,14 +93,14 @@ def main():
     # dataset = datasets.load_dataset("fusing/wikiart_captions")
     training_dataset = (
         wds.WebDataset(
-            urls="/home/nousr/data/image/laion_coyo_local/{00000..00048}.tar"
+            urls="/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar"
         )
         .shuffle(1000)
         .decode("pil", handler=wds.handlers.warn_and_continue)
         .to_tuple("jpg", "txt")
     )
     validation_dataset = (
-        wds.WebDataset(urls="/home/nousr/data/image/laion_coyo_local/00049.tar")
+        wds.WebDataset(urls="/home/nousr/data/image/laion_coyo_local/00099.tar")
         .shuffle(1000)
         .decode("pil", handler=wds.handlers.warn_and_continue)
         .to_tuple("jpg", "txt")
@@ -206,13 +126,14 @@ def main():
 
     trainer = Trainer(
         max_steps=-1,
-        max_epochs=-1,
-        precision="bf16-mixed",
+        max_epochs=1,
+        precision="32-true", # bf16-mixed
         accumulate_grad_batches=1,
-        val_check_interval=250,
+        val_check_interval=256,
         limit_val_batches=1,
         logger=False,
         enable_checkpointing=False,
+        fast_dev_run=False,
     )
     trainer.fit(
         model=prior,
