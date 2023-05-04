@@ -67,8 +67,6 @@ def main():
         scale_image_embedding=SCALE_IMAGE_EMBEDDING,
     )
 
-    optimizer = torch.optim.Adam(prior.parameters(), lr=3e-4)
-
     print("#--- Loading Dataset ---#")
     training_dataset = (
         wds.WebDataset(
@@ -106,7 +104,7 @@ def main():
     trainer = Trainer(
         max_steps=-1,
         max_epochs=1,
-        precision="32-true",  # bf16-mixed
+        precision="bf16-mixed",  # bf16-mixed
         accumulate_grad_batches=1,
         val_check_interval=256,
         limit_val_batches=1,
