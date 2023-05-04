@@ -23,3 +23,16 @@ model:
         final_ln: true
         clip_dim: 512
         dropout: 0.00
+trainer:
+  train_data_urls: "/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar"
+  val_data_urls: "/home/nousr/data/image/laion_coyo_local/00099.tar"
+  epoch_length: null
+  batch_size: 256
+  wandb_project: "prior-testing"
+  precision: "bf16-mixed"
+  max_epochs: 1
+  gradient_clip_val: 0.5
+  accumulate_grad_batches: 1
+  limit_val_batches: 1
+  val_check_interval: 512
+  enable_checkpointing: false
