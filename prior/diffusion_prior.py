@@ -59,7 +59,7 @@ class DiffusionPrior(pl.LightningModule):
         noise_scheduler: NoiseScheduler,
         language_model: BaseClipAdapter,
         parameterization: str,
-        scale_image_embedding: bool = False,
+        scale_embeddings: bool = False,
     ):
         super(DiffusionPrior, self).__init__()
         assert parameterization in [
@@ -76,7 +76,7 @@ class DiffusionPrior(pl.LightningModule):
         self.language_model = language_model
 
         self.parameterization = parameterization
-        self.scale_image_embedding = scale_image_embedding
+        self.scale_embeddings = scale_embeddings
 
     def p_losses(
         self,
@@ -99,13 +99,6 @@ class DiffusionPrior(pl.LightningModule):
             text_emb=text_embedding,
             text_enc=text_encoding,
         )
-
-        # pred = self.prior_transformer.forward(
-        #     image_embed=noised_image_embedding,
-        #     diffusion_timesteps=timesteps,
-        #     text_embed=text_embedding,
-        #     text_encodings=text_encoding,
-        # )
 
         # calculate the loss, depending on the parameterization
         if self.parameterization == "eps":
@@ -144,10 +137,10 @@ class DiffusionPrior(pl.LightningModule):
         timesteps = self.noise_scheduler.sample_random_times(batch_size)
 
         # scale the image embedding
-        if self.scale_image_embedding:
-            image_embedding *= self.language_model.dim_latent**0.5
-            # text_embedding *= self.language_model.dim_latent**0.5
-            # text_encoding *= self.language_model.dim_latent**0.5
+        if self.scale_embeddings:
+            image_embedding = l2norm(image_embedding) * self.language_model.dim_latent**0.5
+            text_embedding = l2norm(text_embedding) * self.language_model.dim_latent**0.5
+            text_encoding = l2norm(text_encoding) * self.language_model.dim_latent**0.5
 
         # send to p_losses & return loss
         return self.p_losses(
@@ -204,13 +197,6 @@ class DiffusionPrior(pl.LightningModule):
         predicted_tokens = self.prior_transformer.forward(
             x, t, text_embedding, text_encoding
         )
-
-        # predicted_tokens = self.prior_transformer.forward(
-        #     image_embed=x,
-        #     diffusion_timesteps=t,
-        #     text_embed=text_embedding,
-        #     text_encodings=text_encoding,
-        # )
 
         if self.parameterization == "v":
             x_start = self.noise_scheduler.predict_start_from_v(
@@ -291,7 +277,7 @@ class DiffusionPrior(pl.LightningModule):
                 steps=steps,
             )
 
-        if self.scale_image_embedding:
+        if self.scale_embeddings:
             image_embedding /= self.language_model.dim_latent**0.5
 
         return image_embedding
@@ -315,6 +301,10 @@ class DiffusionPrior(pl.LightningModule):
 
         # embed the text
         text_embedding, text_encoding = self.language_model.embed_text(tokenized_text)
+
+        if self.scale_embeddings:
+            text_embedding = l2norm(text_embedding) * self.language_model.dim_latent**0.5
+            text_encoding = l2norm(text_encoding) * self.language_model.dim_latent**0.5
 
         # predict the image embedding
         image_embedding = self.p_sample_loop(
