@@ -2,23 +2,40 @@ import random
 from functools import partial
 
 import torch
+import click
 import webdataset as wds
+
 from lightning.pytorch.trainer.trainer import Trainer
+from lightning.pytorch.loggers import WandbLogger
+from omegaconf import OmegaConf
+from open_clip import tokenize
 from torch.utils.data import DataLoader
 from torchvision.transforms.functional import center_crop, pil_to_tensor
-from open_clip import tokenize
-from prior import DiffusionPrior, NoiseScheduler, OpenClipAdapter, PriorTransformer
 
-BATCH_SIZE = 256
-CLIP_DIM = 512
-CLIP_CONTEXT = 77
-SEED = 1337
-PARAMETERIZATION = "x0"
-SCALE_IMAGE_EMBEDDING = True
+from prior.utils import instantiate_from_config
 
 torch.set_float32_matmul_precision("medium")
-torch.manual_seed(SEED)
-random.seed(SEED)
+
+
+def seed_everything(seed: int):
+    torch.manual_seed(seed)
+    random.seed(seed)
+
+
+def get_wds_dataset(urls: str, epoch_length: int = None):
+    dataset = (
+        wds.WebDataset(
+            urls=urls, resampled=True, handler=wds.handlers.warn_and_continue
+        )
+        .shuffle(1000)
+        .decode("pil", handler=wds.handlers.warn_and_continue)
+        .to_tuple("jpg", "txt")
+    )
+
+    if epoch_length is not None:
+        dataset = dataset.with_epoch(epoch_length)
+
+    return dataset
 
 
 def choose_randomly(x):
@@ -41,46 +58,31 @@ def collate_fn(tokenizer, batch):
     return images, captions
 
 
-def main():
-    print("#--- Creating Model ---#")
-    prior_xf = PriorTransformer(
-        ctx_len=CLIP_CONTEXT,
-        emb_dim=512,
-        num_layers=8,
-        num_heads=8,
-        final_ln=True,
-        clip_dim=CLIP_DIM,
-        dropout=0.00,
+@click.command()
+@click.option("--config_path", default="configs/prior_micro.yaml")
+@click.option("--seed", default=1337)
+@click.option("--devices", default="auto")
+@click.option("--num_nodes", default=1)
+@click.option("--num_workers", default=32)
+@click.option("--fast_dev_run", default=False)
+def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
+    seed_everything(seed)
+
+    click.secho("#--- Loading Config ---#", fg="green")
+    config = OmegaConf.load(config_path)
+
+    click.secho("#--- Creating Model ---#", fg="green")
+    prior = instantiate_from_config(config.model)
+
+    click.secho("#--- Loading Dataset ---#", fg="green")
+    training_dataset = get_wds_dataset(
+        urls="/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar",
+        epoch_length=config.trainer.epoch_length,
     )
 
-    scheduler = NoiseScheduler(beta_schedule="cosine", timesteps=1000, loss_type="l2")
-
-    language_model = OpenClipAdapter(
-        path="hf-hub:laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
-    )
-
-    prior = DiffusionPrior(
-        prior_transformer=prior_xf,
-        noise_scheduler=scheduler,
-        language_model=language_model,
-        parameterization=PARAMETERIZATION,
-        scale_image_embedding=SCALE_IMAGE_EMBEDDING,
-    )
-
-    print("#--- Loading Dataset ---#")
-    training_dataset = (
-        wds.WebDataset(
-            urls="/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar"
-        )
-        .shuffle(1000)
-        .decode("pil", handler=wds.handlers.warn_and_continue)
-        .to_tuple("jpg", "txt")
-    )
-    validation_dataset = (
-        wds.WebDataset(urls="/home/nousr/data/image/laion_coyo_local/00099.tar")
-        .shuffle(1000)
-        .decode("pil", handler=wds.handlers.warn_and_continue)
-        .to_tuple("jpg", "txt")
+    validation_dataset = get_wds_dataset(
+        urls="/home/nousr/data/image/laion_coyo_local/00099.tar",
+        epoch_length=config.trainer.epoch_length,
     )
 
     # set the tokenizer for the dataloader
@@ -89,29 +91,35 @@ def main():
     train_dataloader = DataLoader(
         dataset=training_dataset,
         collate_fn=collate,
-        batch_size=BATCH_SIZE,
-        num_workers=32,
-        pin_memory=False,
+        batch_size=config.trainer.batch_size,
+        num_workers=num_workers,
     )
     valid_dataloader = DataLoader(
         dataset=validation_dataset,
         collate_fn=collate,
-        batch_size=BATCH_SIZE,
-        num_workers=32,
-        pin_memory=False,
+        batch_size=config.trainer.batch_size,
+        num_workers=num_workers,
     )
 
+    wandb_logger = WandbLogger(project=config.trainer.project)
+    wandb_logger.config = OmegaConf.to_container(config)
+    wandb_logger.save(config_path)
+    wandb_logger.config.update()
+
     trainer = Trainer(
-        max_steps=-1,
-        max_epochs=1,
-        precision="bf16-mixed",  # bf16-mixed
-        accumulate_grad_batches=1,
-        val_check_interval=256,
-        limit_val_batches=1,
-        logger=False,
-        enable_checkpointing=False,
-        fast_dev_run=False,
+        devices=devices,
+        num_nodes=num_nodes,
+        fast_dev_run=fast_dev_run,
+        logger=wandb_logger,
+        precision=config.trainer.precision,
+        max_epochs=config.trainer.max_epochs,
+        gradient_clip_val=config.trainer.gradient_clip_val,
+        limit_val_batches=config.trainer.limit_val_batches,
+        val_check_interval=config.trainer.val_check_interval,
+        accumulate_grad_batches=config.trainer.accumulate_grad_batches,
+        enable_checkpointing=config.trainer.enable_checkpointing,
     )
+
     trainer.fit(
         model=prior,
         train_dataloaders=train_dataloader,
