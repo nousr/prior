@@ -70,7 +70,6 @@ def main():
     optimizer = torch.optim.Adam(prior.parameters(), lr=3e-4)
 
     print("#--- Loading Dataset ---#")
-    # dataset = datasets.load_dataset("fusing/wikiart_captions")
     training_dataset = (
         wds.WebDataset(
             urls="/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar"
