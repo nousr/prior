@@ -11,7 +11,7 @@ from torch.nn.functional import cosine_similarity
 from prior.prior_transformer import PriorTransformer
 from prior.gaussian_diffusion import NoiseScheduler
 from prior.adapter import BaseClipAdapter
-
+from prior.utils import instantiate_from_config
 
 def l2norm(t):
     return torch.nn.functional.normalize(t, dim=-1)
@@ -55,11 +55,11 @@ class DiffusionPrior(pl.LightningModule):
 
     def __init__(
         self,
-        prior_transformer: PriorTransformer,
-        noise_scheduler: NoiseScheduler,
-        language_model: BaseClipAdapter,
-        parameterization: str,
-        scale_embeddings: bool = False,
+        parameterization,
+        scale_embeddings,
+        language_model_config,
+        noise_scheduler_config,
+        prior_transformer_config,
     ):
         super(DiffusionPrior, self).__init__()
         assert parameterization in [
@@ -68,12 +68,10 @@ class DiffusionPrior(pl.LightningModule):
             "v",
         ], f"parameterization must be one of ['eps', 'x0', 'v'] but got {parameterization}"
 
-        self.prior_transformer = prior_transformer
-        self.noise_scheduler = noise_scheduler
-
-        freeze_model_and_make_eval_(language_model)
-        freeze_model_and_make_eval_(language_model.clip)
-        self.language_model = language_model
+        self.prior_transformer = instantiate_from_config(prior_transformer_config)
+        self.noise_scheduler = instantiate_from_config(noise_scheduler_config)
+        self.language_model = instantiate_from_config(language_model_config)
+        freeze_model_and_make_eval_(self.language_model)
 
         self.parameterization = parameterization
         self.scale_embeddings = scale_embeddings
