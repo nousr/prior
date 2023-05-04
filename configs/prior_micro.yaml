@@ -1,0 +1,25 @@
+model:
+  target: "prior.diffusion_prior.DiffusionPrior"
+  params:
+    parameterization: "x0"
+    scale_embeddings: true
+    language_model_config:
+      target: "prior.adapter.OpenClipAdapter"
+      params:
+        path: "hf-hub:laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
+    noise_scheduler_config:
+      target: "prior.gaussian_diffusion.NoiseScheduler"
+      params:
+        beta_schedule: "cosine"
+        timesteps: 1000
+        loss_type: "l2"
+    prior_transformer_config:
+      target: "prior.prior_transformer.PriorTransformer"
+      params:
+        ctx_len: 77
+        emb_dim: 512
+        num_layers: 8
+        num_heads: 8
+        final_ln: true
+        clip_dim: 512
+        dropout: 0.00
