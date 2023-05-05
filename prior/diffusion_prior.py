@@ -340,10 +340,6 @@ class DiffusionPrior(pl.LightningModule):
         # get the text embedding and encoding
         image, tokenized_caption = batch
 
-        # only sample 32 validation prompts
-        image = image[:32, ...]
-        tokenized_caption = tokenized_caption[:32, ...]
-
         text_embedding, text_encoding = self.language_model.embed_text(
             tokenized_caption
         )

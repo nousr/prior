@@ -99,17 +99,21 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
 
     collate = partial(collate_fn, tokenize)
     train_dataloader = get_dataloader(
-        training_dataset, config.trainer.batch_size, num_workers, collate
+        training_dataset,
+        config.trainer.train_batch_size,
+        num_workers,
+        collate
     )
     valid_dataloader = get_dataloader(
-        validation_dataset, config.trainer.batch_size, num_workers, collate
+        validation_dataset,
+        config.trainer.valid_batch_size,
+        num_workers,
+        collate
     )
 
     # --- Create Trainer --- #
 
     wandb_logger = WandbLogger(project=config.trainer.wandb_project)
-    wandb.save(config_path)
-    wandb.config.update(OmegaConf.to_container(config))
 
     trainer = Trainer(
         devices=devices,

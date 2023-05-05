@@ -36,15 +36,16 @@ model:
         clip_dim: 512
         dropout: 0.00
 trainer:
-  train_data_urls: "/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar"
-  val_data_urls: "/home/nousr/data/image/laion_coyo_local/00099.tar"
-  epoch_length: null
-  batch_size: 256
+  train_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/{00000..99998}.tar -"
+  val_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/99999.tar -"
+  epoch_length: 2037612045
+  train_batch_size: 256
+  valid_batch_size: 32
   wandb_project: "prior-testing"
   precision: "bf16-mixed"
   max_epochs: 1
   gradient_clip_val: 0.5
   accumulate_grad_batches: 1
   limit_val_batches: 1
-  val_check_interval: 512
+  val_check_interval: 100
   enable_checkpointing: false
