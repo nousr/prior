@@ -55,5 +55,5 @@ trainer:
   checkpoint_save_top_k: 4
   checkpoint_monitor: "global_step"
   checkpoint_mode: "max"
-  checkpoint_filename: "prior-big-g-{epoch:02d}-{global_step:06d}"
+  checkpoint_filename: "prior-b-32-{epoch:02d}-{global_step:06d}"
   checkpoint_train_time_interval_minutes: 60
