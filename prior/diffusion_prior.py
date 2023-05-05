@@ -1,13 +1,13 @@
 import torch
 import wandb
 import lightning.pytorch as pl
+import numpy as np
 
 from tqdm import tqdm
 from pprint import pprint
 
 from einops import repeat, rearrange
 from torch.nn.functional import cosine_similarity
-from omegaconf import OmegaConf
 
 from prior.utils import instantiate_from_config, get_obj_from_str
 
@@ -79,6 +79,11 @@ class DiffusionPrior(pl.LightningModule):
 
         self.parameterization = parameterization
         self.scale_embeddings = scale_embeddings
+
+    def setup(self, stage: str):
+        # initialize wandb on rank 0
+        if stage == "fit" and self.trainer.is_global_zero:
+            wandb.init(project="prior-testing")
 
     def p_losses(
         self,
@@ -175,7 +180,7 @@ class DiffusionPrior(pl.LightningModule):
         )
 
         if self.trainer.is_global_zero:
-            wandb.log({"training/loss": loss})
+            wandb.log({"training/loss": loss, "trainer/global_step": self.global_step}, step=self.global_step)
 
         # forward pass
         return loss
@@ -391,7 +396,6 @@ class DiffusionPrior(pl.LightningModule):
             print()  # newline for readability
             pprint(cosine_sim_report)
 
-        return loss
 
     def configure_optimizers(self):
         optimizer = get_obj_from_str(self.optimizer_config.target)(
