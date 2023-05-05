@@ -306,9 +306,7 @@ class DiffusionPrior(pl.LightningModule):
         text_embeds, text_encodings = self.language_model.embed_text(tokenized_text)
 
         if self.scale_embeddings:
-            text_embeds = (
-                l2norm(text_embeds) * self.language_model.dim_latent**0.5
-            )
+            text_embeds = l2norm(text_embeds) * self.language_model.dim_latent**0.5
             text_encoding = (
                 l2norm(text_encodings) * self.language_model.dim_latent**0.5
             )
@@ -321,17 +319,21 @@ class DiffusionPrior(pl.LightningModule):
             steps=steps,
         )
 
-        text_embeds = rearrange(text_embeds, '(b r) d -> b r d', r = best_of)
-        image_embeds = rearrange(image_embeds, '(b r) d -> b r d', r = best_of)
+        text_embeds = rearrange(text_embeds, "(b r) d -> b r d", r=best_of)
+        image_embeds = rearrange(image_embeds, "(b r) d -> b r d", r=best_of)
 
-        text_image_sims = torch.einsum('b r d, b r d -> b r', l2norm(text_embeds), l2norm(image_embeds))
-        top_sim_indices = text_image_sims.topk(k = 1).indices
+        text_image_sims = torch.einsum(
+            "b r d, b r d -> b r", l2norm(text_embeds), l2norm(image_embeds)
+        )
+        top_sim_indices = text_image_sims.topk(k=1).indices
 
-        top_sim_indices = repeat(top_sim_indices, 'b 1 -> b 1 d', d = self.language_model.dim_latent)
+        top_sim_indices = repeat(
+            top_sim_indices, "b 1 -> b 1 d", d=self.language_model.dim_latent
+        )
 
         top_image_embeds = image_embeds.gather(1, top_sim_indices)
 
-        return rearrange(top_image_embeds, 'b 1 d -> b d')
+        return rearrange(top_image_embeds, "b 1 d -> b d")
 
     @torch.no_grad()
     def validation_step(self, batch, _):

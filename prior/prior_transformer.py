@@ -55,29 +55,28 @@ class MLP(pl.LightningModule):
     def forward(self, x):
         return self.net(x)
 
+
 class SwiGLU(nn.Module):
-    """ used successfully in https://arxiv.org/abs/2204.0231 """
+    """used successfully in https://arxiv.org/abs/2204.0231"""
+
     def forward(self, x):
-        x, gate = x.chunk(2, dim = -1)
+        x, gate = x.chunk(2, dim=-1)
         return x * F.silu(gate)
 
-def FeedForward(
-    dim,
-    mult = 4,
-    dropout = 0.,
-    post_activation_norm = False
-):
-    """ post-activation norm https://arxiv.org/abs/2110.09456 """
+
+def FeedForward(dim, mult=4, dropout=0.0, post_activation_norm=False):
+    """post-activation norm https://arxiv.org/abs/2110.09456"""
 
     inner_dim = int(mult * dim)
     return nn.Sequential(
         LayerNorm(dim),
-        nn.Linear(dim, inner_dim * 2, bias = False),
+        nn.Linear(dim, inner_dim * 2, bias=False),
         SwiGLU(),
         LayerNorm(inner_dim) if post_activation_norm else nn.Identity(),
         nn.Dropout(dropout),
-        nn.Linear(inner_dim, dim, bias = False)
+        nn.Linear(inner_dim, dim, bias=False),
     )
+
 
 class CausalSelfAttention(pl.LightningModule):
     """
@@ -168,7 +167,12 @@ class ResidualAttentionBlock(pl.LightningModule):
         )
         self.ln_1 = LayerNorm(emb_dim) if norm_in else nn.Identity()
         self.ln_2 = LayerNorm(emb_dim) if norm_out else nn.Identity()
-        self.ff = FeedForward(emb_dim, mult=mlp_expansion_factor, dropout=dropout, post_activation_norm=True)
+        self.ff = FeedForward(
+            emb_dim,
+            mult=mlp_expansion_factor,
+            dropout=dropout,
+            post_activation_norm=True,
+        )
 
     def forward(self, x):
         x = x + self.attn(self.ln_1(x))
