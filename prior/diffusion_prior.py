@@ -158,11 +158,6 @@ class DiffusionPrior(pl.LightningModule):
             text_encoding=text_encoding,
         )
 
-    def setup(self, stage: str):
-        # initialize wandb on rank 0
-        if stage == "fit" and self.trainer.is_global_zero:
-            wandb.init(project="prior-testing")
-
     def training_step(self, batch, _):
         # get the text embedding and encoding
         image, tokenized_caption = batch
@@ -305,43 +300,38 @@ class DiffusionPrior(pl.LightningModule):
         steps = default(steps, self.noise_scheduler.num_timesteps)
 
         # repeat the tokenized text N times
-        # tokenized_text = repeat(tokenized_text, "b ... -> (b r) ...", r=best_of)
+        tokenized_text = repeat(tokenized_text, "b ... -> (b r) ...", r=best_of)
 
         # embed the text
-        text_embedding, text_encoding = self.language_model.embed_text(tokenized_text)
+        text_embeds, text_encodings = self.language_model.embed_text(tokenized_text)
 
         if self.scale_embeddings:
-            text_embedding = (
-                l2norm(text_embedding) * self.language_model.dim_latent**0.5
+            text_embeds = (
+                l2norm(text_embeds) * self.language_model.dim_latent**0.5
             )
             text_encoding = (
-                l2norm(text_encoding) * self.language_model.dim_latent**0.5
+                l2norm(text_encodings) * self.language_model.dim_latent**0.5
             )
 
         # predict the image embedding
-        image_embedding = self.p_sample_loop(
-            text_embedding=text_embedding,
-            text_encoding=text_encoding,
+        image_embeds = self.p_sample_loop(
+            text_embedding=text_embeds,
+            text_encoding=text_encodings,
             cond_scale=cond_scale,
             steps=steps,
         )
-        # # reshape the embeddings to be (batch_size, best_of, ...)
-        # text_embedding = rearrange(text_embedding, "(b r) ... -> b r ...", r=best_of)
-        # image_embedding = rearrange(image_embedding, "(b r) ... -> b r ...", r=best_of)
 
-        # # find the cosine similarity with the caption
-        # cosine_similarity = torch.einsum(
-        #     "b r d, b r d -> b r", l2norm(text_embedding), l2norm(image_embedding)
-        # )
+        text_embeds = rearrange(text_embeds, '(b r) d -> b r d', r = best_of)
+        image_embeds = rearrange(image_embeds, '(b r) d -> b r d', r = best_of)
 
-        # # find the best image embedding for each caption
-        # top_indices = cosine_similarity.topk(k=1).indices
-        # top_indices = repeat(top_indices, "b 1 -> b 1 d", d=image_embedding.shape[-1])
+        text_image_sims = torch.einsum('b r d, b r d -> b r', l2norm(text_embeds), l2norm(image_embeds))
+        top_sim_indices = text_image_sims.topk(k = 1).indices
 
-        # # gather the best image embeddings
-        # best_image_embeddings = image_embedding.gather(dim=1, index=top_indices)
+        top_sim_indices = repeat(top_sim_indices, 'b 1 -> b 1 d', d = self.language_model.dim_latent)
 
-        return image_embedding
+        top_image_embeds = image_embeds.gather(1, top_sim_indices)
+
+        return rearrange(top_image_embeds, 'b 1 d -> b d')
 
     @torch.no_grad()
     def validation_step(self, batch, _):
