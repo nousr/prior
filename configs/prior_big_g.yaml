@@ -39,7 +39,7 @@ trainer:
   train_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/{00000..99998}.tar -"
   val_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/99999.tar -"
   epoch_length: 2037612045
-  train_batch_size: 256
+  train_batch_size: 200
   valid_batch_size: 32
   wandb_project: "prior-testing"
   precision: "bf16-mixed"
@@ -47,5 +47,11 @@ trainer:
   gradient_clip_val: 0.5
   accumulate_grad_batches: 1
   limit_val_batches: 1
-  val_check_interval: 512
-  enable_checkpointing: false
+  val_check_interval: 100
+  enable_checkpointing: true
+  checkpoint_dirpath: "checkpoints"
+  checkpoint_save_top_k: 4
+  checkpoint_monitor: "global_step"
+  checkpoint_mode: "max"
+  checkpoint_filename: "prior-big-g-{epoch:02d}-{global_step:06d}"
+  checkpoint_train_time_interval_minutes: 60

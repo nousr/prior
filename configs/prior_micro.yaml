@@ -49,3 +49,11 @@ trainer:
   limit_val_batches: 1
   val_check_interval: 100
   enable_checkpointing: false
+  val_check_interval: 100
+  enable_checkpointing: true
+  checkpoint_dirpath: "checkpoints"
+  checkpoint_save_top_k: 4
+  checkpoint_monitor: "global_step"
+  checkpoint_mode: "max"
+  checkpoint_filename: "prior-big-g-{epoch:02d}-{global_step:06d}"
+  checkpoint_train_time_interval_minutes: 60

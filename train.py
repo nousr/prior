@@ -1,16 +1,14 @@
 import random
 from functools import partial
-from collections.abc import Iterable
+from datetime import timedelta
 
 import click
 import torch
-import wandb
 import webdataset as wds
 
-from lightning.pytorch.callbacks import LearningRateMonitor
-from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.trainer.trainer import Trainer
-from omegaconf import OmegaConf, listconfig
+from omegaconf import OmegaConf
 from open_clip import tokenize
 from torch.utils.data import DataLoader
 from torchvision.transforms.functional import center_crop, pil_to_tensor
@@ -113,13 +111,11 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
 
     # --- Create Trainer --- #
 
-    wandb_logger = WandbLogger(project=config.trainer.wandb_project)
-
     trainer = Trainer(
         devices=devices,
         num_nodes=num_nodes,
         fast_dev_run=fast_dev_run,
-        logger=wandb_logger,
+        logger=True,
         precision=config.trainer.precision,
         max_epochs=config.trainer.max_epochs,
         gradient_clip_val=config.trainer.gradient_clip_val,
@@ -127,7 +123,18 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
         val_check_interval=config.trainer.val_check_interval,
         accumulate_grad_batches=config.trainer.accumulate_grad_batches,
         enable_checkpointing=config.trainer.enable_checkpointing,
-        callbacks=[LearningRateMonitor(logging_interval="step")],
+        callbacks=[
+            LearningRateMonitor(logging_interval="step"),
+            ModelCheckpoint(
+                dirpath=config.trainer.checkpoint_dirpath,
+                save_top_k=config.trainer.checkpoint_save_top_k,
+                monitor=config.trainer.checkpoint_monitor,
+                mode=config.trainer.checkpoint_mode,
+                filename=config.trainer.checkpoint_filename,
+                save_last=True,
+                train_time_interval=timedelta(minutes=config.trainer.checkpoint_train_time_interval_minutes)
+            )
+        ],
     )
 
     trainer.fit(
