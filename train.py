@@ -7,7 +7,7 @@ import torch
 import wandb
 import webdataset as wds
 
-from braceexpand import braceexpand
+from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.trainer.trainer import Trainer
 from omegaconf import OmegaConf, listconfig
@@ -123,6 +123,7 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
         val_check_interval=config.trainer.val_check_interval,
         accumulate_grad_batches=config.trainer.accumulate_grad_batches,
         enable_checkpointing=config.trainer.enable_checkpointing,
+        callbacks=[LearningRateMonitor(logging_interval="step")],
     )
 
     trainer.fit(
