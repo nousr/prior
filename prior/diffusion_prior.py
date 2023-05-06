@@ -80,6 +80,9 @@ class DiffusionPrior(pl.LightningModule):
         self.parameterization = parameterization
         self.scale_embeddings = scale_embeddings
 
+        if self.scale_embeddings:
+            self.embedding_scale = self.language_model.dim_latent**0.5
+
     def setup(self, stage: str):
         # initialize wandb on rank 0
         if stage == "fit" and self.trainer.is_global_zero:
@@ -145,15 +148,13 @@ class DiffusionPrior(pl.LightningModule):
 
         # scale the image embedding
         if self.scale_embeddings:
-            image_embedding = (
-                l2norm(image_embedding) * self.language_model.dim_latent**0.5
-            )
-            text_embedding = (
-                l2norm(text_embedding) * self.language_model.dim_latent**0.5
-            )
-            text_encoding = (
-                l2norm(text_encoding) * self.language_model.dim_latent**0.5
-            )
+            image_embedding *= self.embedding_scale
+            # text_embedding = (
+            #     l2norm(text_embedding) * self.language_model.dim_latent**0.5
+            # )
+            # text_encoding = (
+            #     l2norm(text_encoding) * self.language_model.dim_latent**0.5
+            # )
 
         # send to p_losses & return loss
         return self.p_losses(
@@ -180,7 +181,10 @@ class DiffusionPrior(pl.LightningModule):
         )
 
         if self.trainer.is_global_zero:
-            wandb.log({"training/loss": loss, "trainer/global_step": self.global_step}, step=self.global_step)
+            wandb.log(
+                {"training/loss": loss, "trainer/global_step": self.global_step},
+                step=self.global_step,
+            )
 
         # forward pass
         return loss
@@ -286,7 +290,7 @@ class DiffusionPrior(pl.LightningModule):
             )
 
         if self.scale_embeddings:
-            image_embedding /= self.language_model.dim_latent**0.5
+            image_embedding /= self.embedding_scale
 
         return image_embedding
 
@@ -310,11 +314,11 @@ class DiffusionPrior(pl.LightningModule):
         # embed the text
         text_embeds, text_encodings = self.language_model.embed_text(tokenized_text)
 
-        if self.scale_embeddings:
-            text_embeds = l2norm(text_embeds) * self.language_model.dim_latent**0.5
-            text_encoding = (
-                l2norm(text_encodings) * self.language_model.dim_latent**0.5
-            )
+        # if self.scale_embeddings:
+        # text_embeds = l2norm(text_embeds) * self.language_model.dim_latent**0.5
+        # text_encoding = (
+        #     l2norm(text_encodings) * self.language_model.dim_latent**0.5
+        # )
 
         # predict the image embedding
         image_embeds = self.p_sample_loop(
@@ -387,7 +391,7 @@ class DiffusionPrior(pl.LightningModule):
             ),
             ("similarity/sample_image", predicted_image_embeddings, image_embedding),
         ]:
-            cosine_sim = self.find_cosine_similarity(emb_0=emb_0, emb_1=emb_1)
+            cosine_sim = torch.nn.functional.cosine_similarity(emb_0, emb_1)
             cosine_sim_report[f"{name}_avg"] = cosine_sim.mean().item()
         # ------------------------------------------------------------------
 
@@ -395,7 +399,6 @@ class DiffusionPrior(pl.LightningModule):
             wandb.log({"validation/loss": loss, **cosine_sim_report})
             print()  # newline for readability
             pprint(cosine_sim_report)
-
 
     def configure_optimizers(self):
         optimizer = get_obj_from_str(self.optimizer_config.target)(
