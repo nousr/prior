@@ -30,7 +30,7 @@ def get_wds_dataset(urls: str, epoch_length: int = None):
         )
         .shuffle(1000)
         .decode("pil", handler=wds.handlers.warn_and_continue)
-        .to_tuple("jpg", "txt")
+        .to_tuple("jpg", "json")
     )
 
     if epoch_length is not None:
@@ -53,7 +53,9 @@ def choose_randomly(x):
 
 
 def collate_fn(tokenizer, batch):
-    captions = tokenizer([example[1] for example in batch])
+    captions = tokenizer(
+        [example[1]["caption"] if "caption" in example[1] else "" for example in batch]
+    )
     images = [example[0] for example in batch]
 
     # center crop to 224x224
