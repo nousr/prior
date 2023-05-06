@@ -97,19 +97,30 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
 
     collate = partial(collate_fn, tokenize)
     train_dataloader = get_dataloader(
-        training_dataset,
-        config.trainer.train_batch_size,
-        num_workers,
-        collate
+        training_dataset, config.trainer.train_batch_size, num_workers, collate
     )
     valid_dataloader = get_dataloader(
-        validation_dataset,
-        config.trainer.valid_batch_size,
-        num_workers,
-        collate
+        validation_dataset, config.trainer.valid_batch_size, num_workers, collate
     )
 
     # --- Create Trainer --- #
+
+    callbacks = [LearningRateMonitor(logging_interval="step")]
+
+    if config.trainer.enable_checkpointing:
+        callbacks.append(
+            ModelCheckpoint(
+                dirpath=config.trainer.checkpoint_dirpath,
+                save_top_k=config.trainer.checkpoint_save_top_k,
+                monitor=config.trainer.checkpoint_monitor,
+                mode=config.trainer.checkpoint_mode,
+                filename=config.trainer.checkpoint_filename,
+                save_last=True,
+                train_time_interval=timedelta(
+                    minutes=config.trainer.checkpoint_train_time_interval_minutes
+                ),
+            )
+        )
 
     trainer = Trainer(
         devices=devices,
@@ -123,18 +134,7 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
         val_check_interval=config.trainer.val_check_interval,
         accumulate_grad_batches=config.trainer.accumulate_grad_batches,
         enable_checkpointing=config.trainer.enable_checkpointing,
-        callbacks=[
-            LearningRateMonitor(logging_interval="step"),
-            ModelCheckpoint(
-                dirpath=config.trainer.checkpoint_dirpath,
-                save_top_k=config.trainer.checkpoint_save_top_k,
-                monitor=config.trainer.checkpoint_monitor,
-                mode=config.trainer.checkpoint_mode,
-                filename=config.trainer.checkpoint_filename,
-                save_last=True,
-                train_time_interval=timedelta(minutes=config.trainer.checkpoint_train_time_interval_minutes)
-            )
-        ],
+        callbacks=callbacks,
     )
 
     trainer.fit(
