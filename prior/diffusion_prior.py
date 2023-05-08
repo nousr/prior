@@ -1,15 +1,16 @@
 import torch
-import random
 import wandb
 import lightning.pytorch as pl
 
 from tqdm import tqdm
 from pprint import pprint
+from contextlib import contextmanager
 
 from einops import repeat, rearrange
 from torch.nn.functional import cosine_similarity
 
 from prior.utils import instantiate_from_config, get_obj_from_str, eval_decorator
+from prior.ema import LitEma
 
 
 def l2norm(t):
@@ -421,6 +422,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
         noise_scheduler_config,
         optimizer_config,
         lr_scheduler_config,
+        use_ema=True,
         image_channels=3,
         sample_timesteps=None,
         cond_drop_prob=0.0,
@@ -443,6 +445,11 @@ class LegacyDiffusionPrior(pl.LightningModule):
         self.noise_scheduler = instantiate_from_config(noise_scheduler_config)
         self.language_model = instantiate_from_config(language_model_config)
         freeze_model_and_make_eval_(self.language_model)
+
+        self.use_ema = use_ema
+
+        if self.use_ema:
+            self.ema_model = LitEma(self.net)
 
         self.optimizer_config = optimizer_config
         self.lr_scheduler_config = lr_scheduler_config
@@ -493,12 +500,12 @@ class LegacyDiffusionPrior(pl.LightningModule):
 
     def training_step(self, batch, _):
         # get the text embedding and encoding
-        image, tokenized_caption = batch
+        image_embedding, tokenized_caption = batch
         text_embedding, text_encoding = self.language_model.embed_text(
             tokenized_caption
         )
 
-        image_embedding, _ = self.language_model.embed_image(image)
+        # image_embedding, _ = self.language_model.embed_image(image)
 
         loss = self.forward(
             text_embed=text_embedding,
@@ -515,10 +522,36 @@ class LegacyDiffusionPrior(pl.LightningModule):
         # forward pass
         return loss
 
+    @contextmanager
+    def ema_scope(self, context=None):
+        if self.use_ema:
+            self.ema_model.store(self.net.parameters())
+            self.ema_model.copy_to(self.net)
+            if context is not None:
+                print(f"\n{context}: Switched to EMA weights\n")
+        try:
+            yield None
+        finally:
+            if self.use_ema:
+                self.ema_model.restore(self.net.parameters())
+                if context is not None:
+                    print(f"\n{context}: Restored training weights\n")
+
+    def on_train_batch_end(self, *args, **kwargs):
+        if self.use_ema:
+            self.ema_model(self.net)
+
+        # log the learning rate
+        if self.trainer.is_global_zero:
+            wandb.log(
+                {"training/lr": self.optimizers().param_groups[0]["lr"]},
+                step=self.global_step,
+            )
+
     @torch.no_grad()
     def validation_step(self, batch, _):
         # get the text embedding and encoding
-        image, tokenized_caption = batch
+        image_embedding, tokenized_caption = batch
 
         text_embedding, text_encoding = self.language_model.embed_text(
             tokenized_caption
@@ -528,20 +561,20 @@ class LegacyDiffusionPrior(pl.LightningModule):
         unrelated_text_embedding = torch.roll(text_embedding, 1, dims=0)
 
         # get the image embedding
-        image_embedding, _ = self.language_model.embed_image(image)
+        # image_embedding, _ = self.language_model.embed_image(image)
+        with self.ema_scope("Validation Step"):
+            loss = self.forward(
+                text_embed=text_embedding,
+                text_encodings=text_encoding,
+                image_embed=image_embedding,
+            )
 
-        loss = self.forward(
-            text_embed=text_embedding,
-            text_encodings=text_encoding,
-            image_embed=image_embedding,
-        )
-
-        # ------------------------------
-        # now actually sample embeddings
-        # ------------------------------
-        predicted_image_embeddings = self.sample(
-            text=tokenized_caption,
-        )
+            # ------------------------------
+            # now actually sample embeddings
+            # ------------------------------
+            predicted_image_embeddings = self.sample(
+                text=tokenized_caption,
+            )
         # ------------------------------
 
         # ------------------------------------------------------------------
@@ -576,7 +609,10 @@ class LegacyDiffusionPrior(pl.LightningModule):
             self.parameters(), **self.optimizer_config.get("params", dict())
         )
         scheduler = get_obj_from_str(self.lr_scheduler_config.target)(
-            optimizer, **self.lr_scheduler_config.get("params", dict())
+            **self.lr_scheduler_config.get("params", dict())
+        )
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, lr_lambda=scheduler.schedule
         )
 
         schedulers = [{"scheduler": scheduler, "interval": "step", "frequency": 1}]
