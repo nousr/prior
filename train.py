@@ -54,7 +54,12 @@ def choose_randomly(x):
 
 def collate_fn(tokenizer, batch):
     captions = tokenizer(
-        [example[1]["caption"] if "caption" in example[1] else "" for example in batch]
+        [
+            example[1]["caption"]
+            if "caption" in example[1] and example[1]["caption"] is not None
+            else ""
+            for example in batch
+        ]
     )
     images = [example[0] for example in batch]
 
