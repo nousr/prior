@@ -500,12 +500,12 @@ class LegacyDiffusionPrior(pl.LightningModule):
 
     def training_step(self, batch, _):
         # get the text embedding and encoding
-        image_embedding, tokenized_caption = batch
+        image, tokenized_caption = batch
         text_embedding, text_encoding = self.language_model.embed_text(
             tokenized_caption
         )
 
-        # image_embedding, _ = self.language_model.embed_image(image)
+        image_embedding, _ = self.language_model.embed_image(image)
 
         loss = self.forward(
             text_embed=text_embedding,
@@ -551,7 +551,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
     @torch.no_grad()
     def validation_step(self, batch, _):
         # get the text embedding and encoding
-        image_embedding, tokenized_caption = batch
+        image, tokenized_caption = batch
 
         text_embedding, text_encoding = self.language_model.embed_text(
             tokenized_caption
@@ -561,7 +561,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
         unrelated_text_embedding = torch.roll(text_embedding, 1, dims=0)
 
         # get the image embedding
-        # image_embedding, _ = self.language_model.embed_image(image)
+        image_embedding, _ = self.language_model.embed_image(image)
         with self.ema_scope("Validation Step"):
             loss = self.forward(
                 text_embed=text_embedding,
