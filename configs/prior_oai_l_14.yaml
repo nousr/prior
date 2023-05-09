@@ -24,7 +24,7 @@ model:
     noise_scheduler_config:
       target: "prior.gaussian_diffusion.NoiseScheduler"
       params:
-        beta_schedule: "cosine"
+        beta_schedule: "linear"
         timesteps: 1000
         loss_type: "l2"
     prior_transformer_config:
@@ -37,6 +37,7 @@ model:
         final_ln: true
         clip_dim: 768
         dropout: 0.05
+        causal: false
 trainer:
   train_data_urls: "/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar"
   val_data_urls: "/home/nousr/data/image/laion_coyo_local/00099.tar"
@@ -49,7 +50,7 @@ trainer:
   gradient_clip_val: 0.5
   accumulate_grad_batches: 1
   limit_val_batches: 1
-  val_check_interval: 256
+  val_check_interval: 100
   enable_checkpointing: false
   checkpoint_dirpath: "checkpoints"
   checkpoint_save_top_k: 4
