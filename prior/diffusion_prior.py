@@ -9,8 +9,13 @@ from contextlib import contextmanager
 from einops import repeat, rearrange
 from torch.nn.functional import cosine_similarity
 
-from prior.utils import instantiate_from_config, get_obj_from_str, eval_decorator
 from prior.ema import LitEma
+from prior.utils import (
+    instantiate_from_config,
+    get_obj_from_str,
+    eval_decorator,
+    load_stats,
+)
 
 
 def l2norm(t):
@@ -56,12 +61,12 @@ class DiffusionPrior(pl.LightningModule):
     def __init__(
         self,
         parameterization,
-        scale_embeddings,
         optimizer_config,
         lr_scheduler_config,
         language_model_config,
         noise_scheduler_config,
         prior_transformer_config,
+        image_embedding_stats_path,
     ):
         super(DiffusionPrior, self).__init__()
         assert parameterization in [
@@ -79,10 +84,24 @@ class DiffusionPrior(pl.LightningModule):
         self.lr_scheduler_config = lr_scheduler_config
 
         self.parameterization = parameterization
-        self.scale_embeddings = scale_embeddings
 
-        if self.scale_embeddings:
-            self.embedding_scale = self.language_model.dim_latent**0.5
+        # load the stats
+        self.image_embedding_stats_path = image_embedding_stats_path
+        mu, std = load_stats(self.image_embedding_stats_path)
+        self.register_buffer("image_embedding_mu", mu.unsqueeze(0), persistent=True)
+        self.register_buffer("image_embedding_std", std.unsqueeze(0), persistent=True)
+
+    def scale_image_embedding(self, image_embedding):
+        return (image_embedding - self.image_embedding_mu) / self.image_embedding_std
+
+    def unscale_image_embedding(self, image_embedding):
+        return (image_embedding * self.image_embedding_std) + self.image_embedding_mu
+
+    def scale_text_embedding(self, text_embedding):
+        raise NotImplementedError
+
+    def unscale_text_embedding(self, text_embedding):
+        raise NotImplementedError
 
     def setup(self, stage: str):
         # initialize wandb on rank 0
@@ -148,14 +167,7 @@ class DiffusionPrior(pl.LightningModule):
         timesteps = self.noise_scheduler.sample_random_times(batch_size)
 
         # scale the image embedding
-        if self.scale_embeddings:
-            image_embedding *= self.embedding_scale
-            # text_embedding = (
-            #     l2norm(text_embedding) * self.language_model.dim_latent**0.5
-            # )
-            # text_encoding = (
-            #     l2norm(text_encoding) * self.language_model.dim_latent**0.5
-            # )
+        image_embedding = self.scale_image_embedding(image_embedding)
 
         # send to p_losses & return loss
         return self.p_losses(
@@ -290,8 +302,7 @@ class DiffusionPrior(pl.LightningModule):
                 steps=steps,
             )
 
-        if self.scale_embeddings:
-            image_embedding /= self.embedding_scale
+        image_embedding = self.unscale_image_embedding(image_embedding)
 
         return image_embedding
 
