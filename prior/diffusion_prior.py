@@ -417,7 +417,10 @@ class DiffusionPrior(pl.LightningModule):
             self.parameters(), **self.optimizer_config.get("params", dict())
         )
         scheduler = get_obj_from_str(self.lr_scheduler_config.target)(
-            optimizer, **self.lr_scheduler_config.get("params", dict())
+            **self.lr_scheduler_config.get("params", dict())
+        )
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, lr_lambda=scheduler.schedule
         )
 
         schedulers = [{"scheduler": scheduler, "interval": "step", "frequency": 1}]
