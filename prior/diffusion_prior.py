@@ -436,6 +436,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
         noise_scheduler_config,
         optimizer_config,
         lr_scheduler_config,
+        image_embedding_stats_path,
         use_ema=True,
         image_channels=3,
         sample_timesteps=None,
@@ -449,7 +450,6 @@ class LegacyDiffusionPrior(pl.LightningModule):
         sampling_final_clamp_l2norm=False,  # whether to l2norm the final image embedding output (this is also done for images in ddpm)
         training_clamp_l2norm=False,
         init_image_embed_l2norm=False,
-        image_embed_scale=None,  # this is for scaling the l2-normed image embedding, so it is more suitable for gaussian diffusion, as outlined by Katherine (@crowsonkb) https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
     ):
         super().__init__()
 
@@ -491,9 +491,11 @@ class LegacyDiffusionPrior(pl.LightningModule):
         self.predict_x_start = predict_x_start
         self.predict_v = predict_v  # takes precedence over predict_x_start
 
-        # @crowsonkb 's suggestion - https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
-
-        self.image_embed_scale = default(image_embed_scale, self.image_embed_dim**0.5)
+        # load the stats
+        self.image_embedding_stats_path = image_embedding_stats_path
+        mu, std = load_stats(self.image_embedding_stats_path)
+        self.register_buffer("image_embedding_mu", mu.unsqueeze(0), persistent=True)
+        self.register_buffer("image_embedding_std", std.unsqueeze(0), persistent=True)
 
         # whether to force an l2norm, similar to clipping denoised, when sampling
 
@@ -506,6 +508,18 @@ class LegacyDiffusionPrior(pl.LightningModule):
         # device tracker
 
         self.register_buffer("_dummy", torch.tensor([True]), persistent=False)
+
+    def scale_image_embedding(self, image_embedding):
+        return (image_embedding - self.image_embedding_mu) / self.image_embedding_std
+
+    def unscale_image_embedding(self, image_embedding):
+        return (image_embedding * self.image_embedding_std) + self.image_embedding_mu
+
+    def scale_text_embedding(self, text_embedding):
+        raise NotImplementedError
+
+    def unscale_text_embedding(self, text_embedding):
+        raise NotImplementedError
 
     def setup(self, stage: str):
         # initialize wandb on rank 0
@@ -817,7 +831,8 @@ class LegacyDiffusionPrior(pl.LightningModule):
                 *args, **kwargs, timesteps=timesteps
             )
 
-        image_embed = normalized_image_embed / self.image_embed_scale
+        image_embed = self.unscale_image_embedding(normalized_image_embed)
+
         return image_embed
 
     def p_losses(self, image_embed, times, text_cond, noise=None):
@@ -954,12 +969,10 @@ class LegacyDiffusionPrior(pl.LightningModule):
 
         # timestep conditioning from ddpm
 
-        batch, device = image_embed.shape[0], image_embed.device
+        batch = image_embed.shape[0]
         times = self.noise_scheduler.sample_random_times(batch)
 
-        # scale image embed (Katherine)
-
-        image_embed *= self.image_embed_scale
+        image_embed = self.scale_image_embedding(image_embed)
 
         # calculate forward loss
 
