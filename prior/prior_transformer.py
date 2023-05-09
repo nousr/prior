@@ -96,6 +96,7 @@ class CausalSelfAttention(pl.LightningModule):
         self,
         num_heads: int,
         emb_dim: int,
+        causal: bool,
         bias: bool = False,
         dropout: float = 0.0,
     ):
@@ -108,6 +109,7 @@ class CausalSelfAttention(pl.LightningModule):
         # output projection
         self.c_proj = nn.Linear(emb_dim, emb_dim, bias=bias)
         # regularization
+        self.causal = causal
         self.dropout = dropout
         self.resid_dropout = nn.Dropout(dropout)
         self.num_heads = num_heads
@@ -137,7 +139,7 @@ class CausalSelfAttention(pl.LightningModule):
             value,
             attn_mask=None,
             dropout_p=dropout,
-            is_causal=True,
+            is_causal=self.causal,
         )
         y = y.transpose(1, 2).view(batch_size, -1, self.num_heads * head_dim)
 
@@ -151,6 +153,7 @@ class ResidualAttentionBlock(pl.LightningModule):
         self,
         emb_dim: int,
         num_heads: int,
+        causal: bool,
         bias: bool = False,
         dropout: float = 0.0,
         mlp_expansion_factor: int = 4,
@@ -164,6 +167,7 @@ class ResidualAttentionBlock(pl.LightningModule):
             emb_dim,
             bias=bias,
             dropout=dropout,
+            causal=causal,
         )
         self.ln_1 = LayerNorm(emb_dim) if norm_in else nn.Identity()
         self.ln_2 = LayerNorm(emb_dim) if norm_out else nn.Identity()
@@ -186,6 +190,7 @@ class Transformer(pl.LightningModule):
         emb_dim: int,
         num_layers: int,
         num_heads: int,
+        causal: bool,
         bias: bool = False,
         dropout: float = 0.0,
         mlp_expansion_factor: int = 4,
@@ -203,6 +208,7 @@ class Transformer(pl.LightningModule):
                     dropout=dropout,
                     mlp_expansion_factor=mlp_expansion_factor,
                     mlp_hidden_depth=mlp_hidden_depth,
+                    causal=causal,
                 )
                 for _ in range(num_layers)
             ]
@@ -239,6 +245,7 @@ class PriorTransformer(pl.LightningModule):
         ml_expansion_factor=4,
         mlp_hidden_depth=1,
         num_diffusion_timesteps=1000,
+        causal=True,
     ):
         super(PriorTransformer, self).__init__()
 
@@ -276,6 +283,7 @@ class PriorTransformer(pl.LightningModule):
             dropout=dropout,
             mlp_expansion_factor=ml_expansion_factor,
             mlp_hidden_depth=mlp_hidden_depth,
+            causal=causal,
         )
 
         self.final_ln = LayerNorm(emb_dim) if final_ln else nn.Identity()
