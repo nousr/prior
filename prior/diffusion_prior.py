@@ -67,8 +67,11 @@ class DiffusionPrior(pl.LightningModule):
         noise_scheduler_config,
         prior_transformer_config,
         image_embedding_stats_path,
+        config_path=None,
     ):
         super(DiffusionPrior, self).__init__()
+        self.config_path = config_path
+
         assert parameterization in [
             "eps",
             "x0",
@@ -107,6 +110,8 @@ class DiffusionPrior(pl.LightningModule):
         # initialize wandb on rank 0
         if stage == "fit" and self.trainer.is_global_zero:
             wandb.init(project="prior-testing")
+            if exists(self.config_path):
+                wandb.save(self.config_path)
 
     def p_losses(
         self,
@@ -437,6 +442,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
         optimizer_config,
         lr_scheduler_config,
         image_embedding_stats_path,
+        config_path=None,
         use_ema=True,
         image_channels=3,
         sample_timesteps=None,
@@ -452,7 +458,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
         init_image_embed_l2norm=False,
     ):
         super().__init__()
-
+        self.config_path = config_path
         self.sample_timesteps = sample_timesteps
 
         self.net = instantiate_from_config(prior_transformer_config)
@@ -525,6 +531,8 @@ class LegacyDiffusionPrior(pl.LightningModule):
         # initialize wandb on rank 0
         if stage == "fit" and self.trainer.is_global_zero:
             wandb.init(project="prior-testing")
+            if exists(self.config_path):
+                wandb.save(self.config_path)
 
     def training_step(self, batch, _):
         # get the text embedding and encoding
@@ -533,6 +541,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
             tokenized_caption
         )
 
+        image = (image + 1.0) / 2.0
         image_embedding, _ = self.language_model.embed_image(image)
 
         loss = self.forward(
@@ -589,7 +598,9 @@ class LegacyDiffusionPrior(pl.LightningModule):
         unrelated_text_embedding = torch.roll(text_embedding, 1, dims=0)
 
         # get the image embedding
+        image = (image + 1.0) / 2.0
         image_embedding, _ = self.language_model.embed_image(image)
+
         with self.ema_scope("Validation Step"):
             loss = self.forward(
                 text_embed=text_embedding,

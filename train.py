@@ -89,7 +89,7 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
     config = OmegaConf.load(config_path)
 
     click.secho("#--- Creating Model ---#", fg="green")
-    prior = instantiate_from_config(config.model)
+    prior = instantiate_from_config(config.model, config_path=config_path)
 
     click.secho("#--- Loading Dataset ---#", fg="green")
     training_dataset = get_wds_dataset(
