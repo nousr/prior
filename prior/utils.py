@@ -1,4 +1,10 @@
+import os
+import torch
 import importlib
+
+MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
+STATS_PATH = os.path.join(MODULE_PATH, "stats")
+STATS_LIST = os.listdir(STATS_PATH)
 
 
 def instantiate_from_config(config):
@@ -24,3 +30,28 @@ def eval_decorator(fn):
         return out
 
     return inner
+
+
+def get_available_stats():
+    return STATS_LIST
+
+
+def load_stats(path: str):
+    """
+    Load the embedding stats from a file.
+
+    It can either be a name that exists in the supplied list or a path to a file.
+
+    If it is a path to a file it must be a torch tensor of the shape (2, embedding_size).
+
+    Where the first row is the mean and the second row is the standard deviation.
+    """
+
+    if path in STATS_LIST:
+        path = os.path.join(STATS_PATH, path)
+        mu, std = torch.load(path, map_location="cpu")
+    else:
+        assert os.path.isfile(path), f"Could not find stats file at {path}"
+        mu, std = torch.load(path, map_location="cpu")
+
+    return mu, std
