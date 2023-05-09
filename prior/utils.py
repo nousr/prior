@@ -7,8 +7,10 @@ STATS_PATH = os.path.join(MODULE_PATH, "stats")
 STATS_LIST = os.listdir(STATS_PATH)
 
 
-def instantiate_from_config(config):
-    return get_obj_from_str(config["target"])(**config.get("params", dict()))
+def instantiate_from_config(config, *args, **kwargs):
+    return get_obj_from_str(config["target"])(
+        *args, **kwargs, **config.get("params", dict())
+    )
 
 
 def get_obj_from_str(string, reload=False, invalidate_cache=True):
