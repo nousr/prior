@@ -42,7 +42,7 @@ trainer:
   train_data_urls: "/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar"
   val_data_urls: "/home/nousr/data/image/laion_coyo_local/00099.tar"
   epoch_length: null
-  train_batch_size: 512
+  train_batch_size: 256
   valid_batch_size: 32
   wandb_project: "prior-testing"
   precision: "bf16-mixed"
