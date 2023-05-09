@@ -85,13 +85,10 @@ def collate_fn(tokenizer, batch):
 def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
     seed_everything(seed)
 
-    click.secho("#--- Loading Config ---#", fg="green")
     config = OmegaConf.load(config_path)
 
-    click.secho("#--- Creating Model ---#", fg="green")
     prior = instantiate_from_config(config.model, config_path=config_path)
 
-    click.secho("#--- Loading Dataset ---#", fg="green")
     training_dataset = get_wds_dataset(
         urls=config.trainer.train_data_urls,
         epoch_length=config.trainer.epoch_length,
