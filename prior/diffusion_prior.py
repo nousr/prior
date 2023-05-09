@@ -190,6 +190,7 @@ class DiffusionPrior(pl.LightningModule):
         )
         # get the image embedding
         # TODO: try conditioning on the image encoding as well
+        image = (image + 1.0) / 2.0
         image_embedding, _ = self.language_model.embed_image(image)
 
         loss = self.forward(
@@ -374,6 +375,7 @@ class DiffusionPrior(pl.LightningModule):
         unrelated_text_embedding = torch.roll(text_embedding, 1, dims=0)
 
         # get the image embedding
+        image = (image + 1.0) / 2.0
         image_embedding, _ = self.language_model.embed_image(image)
 
         loss = self.forward(
