@@ -190,7 +190,6 @@ class DiffusionPrior(pl.LightningModule):
         )
         # get the image embedding
         # TODO: try conditioning on the image encoding as well
-        image = (image + 1.0) / 2.0
         image_embedding, _ = self.language_model.embed_image(image)
 
         loss = self.forward(
@@ -543,7 +542,6 @@ class LegacyDiffusionPrior(pl.LightningModule):
             tokenized_caption
         )
 
-        image = (image + 1.0) / 2.0
         image_embedding, _ = self.language_model.embed_image(image)
 
         loss = self.forward(
