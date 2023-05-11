@@ -1,15 +1,16 @@
 model:
   target: "prior.diffusion_prior.LegacyDiffusionPrior"
   params:
+    image_embedding_stats_path: "/admin/home-zion/prior/prior/stats/openclip_bigG_image_stats.pt"
     optimizer_config:
       target: "torch.optim.AdamW"
       params:
-        lr: 2e-4
+        lr: 2.0e-4
         betas: [0.9, 0.999]
-        eps: 1e-08
+        eps: 1.0e-08
         weight_decay: 0.01
     lr_scheduler_config:
-      target: prior.optim.LambdaLinearScheduler
+      target: "prior.optim.LambdaLinearScheduler"
       params:
         warm_up_steps: [1000]
         cycle_lengths: [10000000000000] # incredibly large number to prevent corner cases
@@ -23,7 +24,7 @@ model:
     noise_scheduler_config:
       target: "prior.gaussian_diffusion.NoiseScheduler"
       params:
-        beta_schedule: "cosine"
+        beta_schedule: "linear"
         timesteps: 1000
         loss_type: "l2"
     prior_transformer_config:
@@ -36,6 +37,7 @@ model:
         final_ln: true
         clip_dim: 1280
         dropout: 0.05
+        causal: false
 trainer:
   train_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/{00000..99998}.tar -"
   val_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/99999.tar -"
@@ -52,7 +54,7 @@ trainer:
   enable_checkpointing: true
   checkpoint_dirpath: "checkpoints"
   checkpoint_save_top_k: 4
-  checkpoint_monitor: "global_step"
+  checkpoint_monitor: "step"
   checkpoint_mode: "max"
-  checkpoint_filename: "prior-big-g-{epoch:02d}-{global_step:06d}"
+  checkpoint_filename: "prior-big-g-{epoch:02d}-{step:06d}"
   checkpoint_train_time_interval_minutes: 60
