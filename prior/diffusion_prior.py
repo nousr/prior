@@ -68,6 +68,7 @@ class DiffusionPrior(pl.LightningModule):
         prior_transformer_config,
         image_embedding_stats_path,
         config_path=None,
+        use_ema=True,
     ):
         super(DiffusionPrior, self).__init__()
         self.config_path = config_path
@@ -82,6 +83,11 @@ class DiffusionPrior(pl.LightningModule):
         self.noise_scheduler = instantiate_from_config(noise_scheduler_config)
         self.language_model = instantiate_from_config(language_model_config)
         freeze_model_and_make_eval_(self.language_model)
+
+        self.use_ema = use_ema
+
+        if self.use_ema:
+            self.ema_model = LitEma(self.prior_transformer)
 
         self.optimizer_config = optimizer_config
         self.lr_scheduler_config = lr_scheduler_config
@@ -206,6 +212,32 @@ class DiffusionPrior(pl.LightningModule):
 
         # forward pass
         return loss
+
+    def on_train_batch_end(self, *args, **kwargs):
+        if self.use_ema:
+            self.ema_model(self.prior_transformer)
+
+        # log the learning rate
+        if self.trainer.is_global_zero:
+            wandb.log(
+                {"training/lr": self.optimizers().param_groups[0]["lr"]},
+                step=self.global_step,
+            )
+
+    @contextmanager
+    def ema_scope(self, context=None):
+        if self.use_ema:
+            self.ema_model.store(self.prior_transformer.parameters())
+            self.ema_model.copy_to(self.prior_transformer)
+            if context is not None:
+                print(f"\n{context}: Switched to EMA weights\n")
+        try:
+            yield None
+        finally:
+            if self.use_ema:
+                self.ema_model.restore(self.prior_transformer.parameters())
+                if context is not None:
+                    print(f"\n{context}: Restored training weights\n")
 
     @torch.no_grad()
     def find_cosine_similarity(self, emb_0, emb_1):
@@ -377,19 +409,20 @@ class DiffusionPrior(pl.LightningModule):
         image = (image + 1.0) / 2.0
         image_embedding, _ = self.language_model.embed_image(image)
 
-        loss = self.forward(
-            text_embedding=text_embedding,
-            text_encoding=text_encoding,
-            image_embedding=image_embedding,
-        )
+        with self.ema_scope("Validation Step"):
+            loss = self.forward(
+                text_embedding=text_embedding,
+                text_encoding=text_encoding,
+                image_embedding=image_embedding,
+            )
 
-        # ------------------------------
-        # now actually sample embeddings
-        # ------------------------------
-        predicted_image_embeddings = self.sample(
-            tokenized_text=tokenized_caption,
-        )
-        # ------------------------------
+            # ------------------------------
+            # now actually sample embeddings
+            # ------------------------------
+            predicted_image_embeddings = self.sample(
+                tokenized_text=tokenized_caption,
+            )
+            # ------------------------------
 
         # ------------------------------------------------------------------
         # compute the average cosine similarity between:
