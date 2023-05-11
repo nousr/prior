@@ -2,6 +2,7 @@ model:
   target: "prior.diffusion_prior.DiffusionPrior"
   params:
     image_embedding_stats_path: "/admin/home-zion/prior/prior/stats/openclip_bigG_image_stats.pt"
+    parameterization: "x0"
     optimizer_config:
       target: "torch.optim.AdamW"
       params:
@@ -24,26 +25,27 @@ model:
     noise_scheduler_config:
       target: "prior.gaussian_diffusion.NoiseScheduler"
       params:
-        beta_schedule: "linear"
-        timesteps: 1000
+        beta_schedule: "cosine"
+        timesteps: 100
         loss_type: "l2"
     prior_transformer_config:
       target: "prior.prior_transformer.PriorTransformer"
       params:
         ctx_len: 77
-        emb_dim: 1280
-        num_layers: 20
-        num_heads: 20
+        emb_dim: 2048
+        num_layers: 32
+        num_heads: 32
         final_ln: true
         clip_dim: 1280
         dropout: 0.05
         causal: false
 trainer:
+  ckpt_path: null
   train_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/{00000..99998}.tar -"
   val_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/99999.tar -"
   epoch_length: 2037612045
-  train_batch_size: 200
-  valid_batch_size: 32
+  train_batch_size: 32
+  valid_batch_size: 16
   wandb_project: "prior-testing"
   precision: "bf16-mixed"
   max_epochs: 1
@@ -52,9 +54,9 @@ trainer:
   limit_val_batches: 1
   val_check_interval: 100
   enable_checkpointing: true
-  checkpoint_dirpath: "checkpoints"
+  checkpoint_dirpath: "large_checkpoints"
   checkpoint_save_top_k: 4
   checkpoint_monitor: "step"
   checkpoint_mode: "max"
-  checkpoint_filename: "prior-big-g-{epoch:02d}-{step:06d}"
+  checkpoint_filename: "prior-big-g-{step:06d}"
   checkpoint_train_time_interval_minutes: 60

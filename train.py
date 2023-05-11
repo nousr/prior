@@ -24,12 +24,16 @@ def seed_everything(seed: int):
 
 
 def get_wds_dataset(urls: str, epoch_length: int = None):
+    def filter_missing(x):
+        return "json" in x and "jpg" in x
+
     dataset = (
         wds.WebDataset(
             urls=urls, resampled=True, handler=wds.handlers.warn_and_continue
         )
         .shuffle(1000)
         .decode("pil", handler=wds.handlers.warn_and_continue)
+        .select(filter_missing)
         .to_tuple("jpg", "json")
     )
 
@@ -145,6 +149,7 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
         model=prior,
         train_dataloaders=train_dataloader,
         val_dataloaders=valid_dataloader,
+        ckpt_path=config.trainer.ckpt_path,
     )
 
 
