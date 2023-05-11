@@ -7,7 +7,6 @@ from prior.optim import LambdaLinearScheduler
 from prior.utils import (
     instantiate_from_config,
     get_obj_from_str,
-    get_available_stats,
     eval_decorator,
     load_stats,
 )
