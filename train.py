@@ -80,7 +80,7 @@ def collate_fn(tokenizer, batch):
 @click.option("--seed", default=1337)
 @click.option("--devices", default="auto")
 @click.option("--num_nodes", default=1)
-@click.option("--num_workers", default=16)
+@click.option("--num_workers", default=6)
 @click.option("--fast_dev_run", is_flag=True, default=False)
 def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
     seed_everything(seed)
