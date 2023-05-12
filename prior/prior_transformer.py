@@ -78,11 +78,9 @@ def FeedForward(dim, mult=4, dropout=0.0, post_activation_norm=False):
     )
 
 
-class CausalSelfAttention(pl.LightningModule):
+class SelfAttention(pl.LightningModule):
     """
     Causal self-attention layer.
-
-    (from pytorch documentation)
 
     Args:
         num_heads (int): number of attention heads
@@ -100,7 +98,7 @@ class CausalSelfAttention(pl.LightningModule):
         bias: bool = False,
         dropout: float = 0.0,
     ):
-        super(CausalSelfAttention, self).__init__()
+        super(SelfAttention, self).__init__()
         assert (
             emb_dim % num_heads == 0
         ), f"emb_dim must be divisible by num_heads: got {emb_dim} % {num_heads} which is {emb_dim % num_heads}"
@@ -157,12 +155,11 @@ class ResidualAttentionBlock(pl.LightningModule):
         bias: bool = False,
         dropout: float = 0.0,
         mlp_expansion_factor: int = 4,
-        mlp_hidden_depth: int = 1,
         norm_in: bool = True,
         norm_out: bool = True,
     ):
         super(ResidualAttentionBlock, self).__init__()
-        self.attn = CausalSelfAttention(
+        self.attn = SelfAttention(
             num_heads,
             emb_dim,
             bias=bias,
@@ -194,7 +191,6 @@ class Transformer(pl.LightningModule):
         bias: bool = False,
         dropout: float = 0.0,
         mlp_expansion_factor: int = 4,
-        mlp_hidden_depth: int = 1,
     ):
         super(Transformer, self).__init__()
         self.emb_dim = emb_dim
@@ -207,7 +203,6 @@ class Transformer(pl.LightningModule):
                     bias=bias,
                     dropout=dropout,
                     mlp_expansion_factor=mlp_expansion_factor,
-                    mlp_hidden_depth=mlp_hidden_depth,
                     causal=causal,
                 )
                 for _ in range(num_layers)
@@ -243,7 +238,6 @@ class PriorTransformer(pl.LightningModule):
         bias=False,
         dropout=0.0,
         ml_expansion_factor=4,
-        mlp_hidden_depth=1,
         num_diffusion_timesteps=1000,
         causal=True,
     ):
@@ -282,7 +276,6 @@ class PriorTransformer(pl.LightningModule):
             bias=bias,
             dropout=dropout,
             mlp_expansion_factor=ml_expansion_factor,
-            mlp_hidden_depth=mlp_hidden_depth,
             causal=causal,
         )
 
@@ -313,8 +306,7 @@ class PriorTransformer(pl.LightningModule):
         ]
 
         input = torch.cat(input_seq, dim=1)
-        # pos_emb = self.positional_embedding.to(input.dtype)
-        # input = input + pos_emb  # (B, ctx_len+4, emb_dim)
+
         out = self.transformer(input)
 
         out = self.final_ln(out)
