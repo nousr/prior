@@ -136,7 +136,7 @@ class OpenClipAdapter(BaseClipAdapter):
         text_encodings = self.text_encodings
         text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.0)
         del self.text_encodings
-        return EmbeddedText(l2norm(text_embed.float()), text_encodings.float())
+        return EmbeddedText(text_embed.float(), text_encodings.float())
 
     @torch.no_grad()
     def tokenize_text(self, text):
@@ -146,7 +146,6 @@ class OpenClipAdapter(BaseClipAdapter):
     @torch.no_grad()
     def embed_image(self, image):
         assert not self.cleared
-        image = self.validate_and_resize_image(image)
-        image = self.clip_normalize(image)
-        image_embed = self.clip.encode_image(image)
-        return EmbeddedImage(l2norm(image_embed.float()), None)
+        # skip the resize and normalization step
+        # additionally, return the raw embedding (no normalization)
+        return EmbeddedImage(self.clip.encode_image(image), None)
