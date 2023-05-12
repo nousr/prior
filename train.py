@@ -1,4 +1,5 @@
 import random
+import pkg_resources
 from functools import partial
 from datetime import timedelta
 
@@ -11,11 +12,41 @@ from lightning.pytorch.trainer.trainer import Trainer
 from omegaconf import OmegaConf
 from open_clip import tokenize
 from torch.utils.data import DataLoader
-from torchvision.transforms.functional import center_crop, pil_to_tensor
+from torchvision import transforms
 
 from prior.utils import instantiate_from_config
+import kornia
+
 
 torch.set_float32_matmul_precision("medium")
+
+# sd - unclip compatible augmentation pipeline
+assert (
+    pkg_resources.get_distribution("kornia").version == "0.6.8"
+), f"SD-Unclip requires kornia==0.6.8"
+AUGMENTATION_PIPELINE = transforms.Compose(
+    [
+        transforms.ToTensor(),  # pil->tensor (0, 1)
+        transforms.Lambda(lambda x: x * 2.0 - 1.0),  # (0, 1) -> (-1, 1)
+        transforms.Lambda(  # resize to 224x224
+            lambda x: kornia.geometry.resize(
+                x,
+                (224, 224),
+                interpolation="bicubic",
+                align_corners=True,
+                antialias=True,
+            )
+        ),
+        transforms.Lambda(lambda x: (x + 1.0) / 2.0),  # (-1, 1) -> (0, 1)
+        transforms.Lambda(  # normalize according to CLIP
+            lambda x: kornia.enhance.normalize(
+                x,
+                [0.48145466, 0.4578275, 0.40821073],
+                [0.26862954, 0.26130258, 0.27577711],
+            )
+        ),
+    ]
+)
 
 
 def seed_everything(seed: int):
@@ -67,10 +98,7 @@ def collate_fn(tokenizer, batch):
     )
     images = [example[0] for example in batch]
 
-    # center crop to 224x224
-    images = [
-        pil_to_tensor(center_crop(image, (224, 224))).float() / 255 for image in images
-    ]
+    images = [AUGMENTATION_PIPELINE(image) for image in images]
 
     # stack the images
     images = torch.stack(images)
@@ -127,6 +155,7 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
                 train_time_interval=timedelta(
                     minutes=config.trainer.checkpoint_train_time_interval_minutes
                 ),
+                save_on_train_epoch_end=True,
             )
         )
 
