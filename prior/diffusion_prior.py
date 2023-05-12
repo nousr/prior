@@ -406,7 +406,6 @@ class DiffusionPrior(pl.LightningModule):
         unrelated_text_embedding = torch.roll(text_embedding, 1, dims=0)
 
         # get the image embedding
-        image = (image + 1.0) / 2.0
         image_embedding, _ = self.language_model.embed_image(image)
 
         with self.ema_scope("Validation Step"):
@@ -631,7 +630,6 @@ class LegacyDiffusionPrior(pl.LightningModule):
         unrelated_text_embedding = torch.roll(text_embedding, 1, dims=0)
 
         # get the image embedding
-        image = (image + 1.0) / 2.0
         image_embedding, _ = self.language_model.embed_image(image)
 
         with self.ema_scope("Validation Step"):
