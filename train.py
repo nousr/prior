@@ -40,9 +40,9 @@ AUGMENTATION_PIPELINE = transforms.Compose(
         transforms.Lambda(lambda x: (x + 1.0) / 2.0),  # (-1, 1) -> (0, 1)
         transforms.Lambda(  # normalize according to CLIP
             lambda x: kornia.enhance.normalize(
-                x,
-                [0.48145466, 0.4578275, 0.40821073],
-                [0.26862954, 0.26130258, 0.27577711],
+                data=x.unsqueeze(0),
+                mean=torch.tensor([0.48145466, 0.4578275, 0.40821073]),
+                std=torch.tensor([0.26862954, 0.26130258, 0.27577711]),
             )
         ),
     ]
@@ -56,7 +56,7 @@ def seed_everything(seed: int):
 
 def get_wds_dataset(urls: str, epoch_length: int = None):
     def filter_missing(x):
-        return "json" in x and "jpg" in x
+        return ("json" in x and "jpg" in x) and ("caption" in x["json"])
 
     dataset = (
         wds.WebDataset(
@@ -66,6 +66,7 @@ def get_wds_dataset(urls: str, epoch_length: int = None):
         .decode("pil", handler=wds.handlers.warn_and_continue)
         .select(filter_missing)
         .to_tuple("jpg", "json")
+        .map_tuple(AUGMENTATION_PIPELINE, lambda x: tokenize(x["caption"]))
     )
 
     if epoch_length is not None:
@@ -83,26 +84,13 @@ def get_dataloader(dataset, batch_size, num_workers, collate_fn):
     )
 
 
-def choose_randomly(x):
-    return x[torch.randint(len(x), (1,))]
-
-
-def collate_fn(tokenizer, batch):
-    captions = tokenizer(
-        [
-            example[1]["caption"]
-            if "caption" in example[1] and example[1]["caption"] is not None
-            else ""
-            for example in batch
-        ]
+def collate_fn(batch):
+    images = (
+        torch.concat([x[0] for x in batch])
+        .to(memory_format=torch.contiguous_format)
+        .float()
     )
-    images = [example[0] for example in batch]
-
-    images = [AUGMENTATION_PIPELINE(image) for image in images]
-
-    # stack the images
-    images = torch.stack(images)
-    images = images.to(memory_format=torch.contiguous_format).float()
+    captions = torch.concat([x[1] for x in batch])
 
     return images, captions
 
@@ -131,12 +119,12 @@ def main(config_path, seed, devices, num_nodes, num_workers, fast_dev_run):
         epoch_length=config.trainer.epoch_length,
     )
 
-    collate = partial(collate_fn, tokenize)
     train_dataloader = get_dataloader(
-        training_dataset, config.trainer.train_batch_size, num_workers, collate
+        training_dataset, config.trainer.train_batch_size, num_workers, collate_fn
     )
+
     valid_dataloader = get_dataloader(
-        validation_dataset, config.trainer.valid_batch_size, num_workers, collate
+        validation_dataset, config.trainer.valid_batch_size, num_workers, collate_fn
     )
 
     # --- Create Trainer --- #
