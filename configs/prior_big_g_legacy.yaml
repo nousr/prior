@@ -5,7 +5,7 @@ model:
     optimizer_config:
       target: "torch.optim.AdamW"
       params:
-        lr: 2.0e-4
+        lr: 1.0e-4
         betas: [0.9, 0.999]
         eps: 1.0e-08
         weight_decay: 0.01
@@ -24,7 +24,7 @@ model:
     noise_scheduler_config:
       target: "prior.gaussian_diffusion.NoiseScheduler"
       params:
-        beta_schedule: "linear"
+        beta_schedule: "cosine"
         timesteps: 1000
         loss_type: "l2"
     prior_transformer_config:
@@ -39,6 +39,7 @@ model:
         dropout: 0.05
         causal: false
 trainer:
+  ckpt_path: null
   train_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/{00000..99998}.tar -"
   val_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/99999.tar -"
   epoch_length: 2037612045
@@ -46,15 +47,15 @@ trainer:
   valid_batch_size: 32
   wandb_project: "prior-testing"
   precision: "bf16-mixed"
-  max_epochs: 1
+  max_epochs: 2
   gradient_clip_val: 0.5
   accumulate_grad_batches: 1
   limit_val_batches: 1
-  val_check_interval: 100
+  val_check_interval: 200
   enable_checkpointing: true
-  checkpoint_dirpath: "checkpoints"
+  checkpoint_dirpath: "2048-checkpoints"
   checkpoint_save_top_k: 4
   checkpoint_monitor: "step"
   checkpoint_mode: "max"
-  checkpoint_filename: "prior-big-g-{epoch:02d}-{step:06d}"
+  checkpoint_filename: "prior-big-g-2048-{step:06d}"
   checkpoint_train_time_interval_minutes: 60

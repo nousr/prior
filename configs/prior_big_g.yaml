@@ -26,15 +26,15 @@ model:
       target: "prior.gaussian_diffusion.NoiseScheduler"
       params:
         beta_schedule: "cosine"
-        timesteps: 100
+        timesteps: 1000
         loss_type: "l2"
     prior_transformer_config:
       target: "prior.prior_transformer.PriorTransformer"
       params:
         ctx_len: 77
-        emb_dim: 2048
-        num_layers: 32
-        num_heads: 32
+        emb_dim: 1280
+        num_layers: 20
+        num_heads: 20
         final_ln: true
         clip_dim: 1280
         dropout: 0.05
@@ -44,8 +44,8 @@ trainer:
   train_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/{00000..99998}.tar -"
   val_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/99999.tar -"
   epoch_length: 2037612045
-  train_batch_size: 32
-  valid_batch_size: 16
+  train_batch_size: 200
+  valid_batch_size: 32
   wandb_project: "prior-testing"
   precision: "bf16-mixed"
   max_epochs: 1
@@ -54,7 +54,7 @@ trainer:
   limit_val_batches: 1
   val_check_interval: 100
   enable_checkpointing: true
-  checkpoint_dirpath: "large_checkpoints"
+  checkpoint_dirpath: "checkpoints"
   checkpoint_save_top_k: 4
   checkpoint_monitor: "step"
   checkpoint_mode: "max"
