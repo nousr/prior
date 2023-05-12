@@ -3,7 +3,7 @@
 # SLURM SUBMIT SCRIPT
 #SBATCH --job-name=prior
 #SBATCH --partition=g80
-#SBATCH --nodes=8
+#SBATCH --nodes=32
 #SBATCH --gres=gpu:8
 #SBATCH --ntasks-per-node=8
 #SBATCH --mem=0
@@ -21,5 +21,5 @@ export OMPI_MCA_mtl_base_verbose=1
 export FI_PROVIDER=efa
 export NCCL_TREE_THRESHOLD=0
 
-srun python train.py --config_path=configs/prior_big_g.yaml --num_workers=6 --num_nodes=8 --devices=8
+srun python train.py --config_path=configs/prior_big_g.yaml --num_workers=6 --num_nodes=32 --devices=8
 
