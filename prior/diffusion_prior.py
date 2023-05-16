@@ -931,7 +931,14 @@ class LegacyDiffusionPrior(pl.LightningModule):
 
     @torch.no_grad()
     @eval_decorator
-    def sample(self, text, num_samples_per_batch=2, cond_scale=1.0, timesteps=None, callback=None):
+    def sample(
+        self,
+        text,
+        num_samples_per_batch=2,
+        cond_scale=1.0,
+        timesteps=None,
+        callback=None,
+    ):
         timesteps = default(timesteps, self.sample_timesteps)
 
         # in the paper, what they did was
