@@ -1,7 +1,8 @@
 model:
   target: "prior.diffusion_prior.LegacyDiffusionPrior"
   params:
-    image_embedding_stats_path: "OAI_L_14.pt"
+    image_embedding_stats_path: "/home/nousr/github/diffusion-prior/prior/stats/OAI_L_14.pt"
+    cond_drop_prob: 0.25
     optimizer_config:
       target: "torch.optim.AdamW"
       params:
@@ -18,7 +19,7 @@ model:
         f_max: [1.]
         f_min: [1.]
     language_model_config:
-      target: "dalle2_pytorch.dalle2_pytorch.OpenAIClipAdapter"
+      target: "prior.adapter.OpenAIClipAdapter"
       params:
         name: "ViT-L/14"
     noise_scheduler_config:
@@ -36,9 +37,10 @@ model:
         num_heads: 12
         final_ln: true
         clip_dim: 768
-        dropout: 0.05
+        attn_dropout: 0.05
         causal: false
 trainer:
+  ckpt_path: null
   train_data_urls: "/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar"
   val_data_urls: "/home/nousr/data/image/laion_coyo_local/00099.tar"
   epoch_length: null

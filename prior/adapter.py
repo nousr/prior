@@ -74,6 +74,74 @@ class BaseClipAdapter(pl.LightningModule):
         raise NotImplementedError
 
 
+class OpenAIClipAdapter(BaseClipAdapter):
+    def __init__(self, name="ViT-B/32"):
+        import clip
+
+        openai_clip, preprocess = clip.load(name)
+        super().__init__(openai_clip)
+        self.eos_id = 49407  # for handling 0 being also '!'
+
+        text_attention_final = self.find_layer("ln_final")
+
+        self.dim_latent_ = text_attention_final.weight.shape[0]
+        self.handle = text_attention_final.register_forward_hook(self._hook)
+
+        self.clip_normalize = preprocess.transforms[-1]
+        self.cleared = False
+
+    def find_layer(self, layer):
+        modules = dict([*self.clip.named_modules()])
+        return modules.get(layer, None)
+
+    def clear(self):
+        if self.cleared:
+            return
+
+        self.handle()
+
+    def _hook(self, _, inputs, outputs):
+        self.text_encodings = outputs
+
+    @property
+    def dim_latent(self):
+        return self.dim_latent_
+
+    @property
+    def image_size(self):
+        return self.clip.visual.input_resolution
+
+    @property
+    def image_channels(self):
+        return 3
+
+    @property
+    def max_text_len(self):
+        return self.clip.context_length
+
+    @torch.no_grad()
+    def embed_text(self, text):
+        text = text[..., : self.max_text_len]
+
+        is_eos_id = text == self.eos_id
+        text_mask_excluding_eos = is_eos_id.cumsum(dim=-1) == 0
+        text_mask = F.pad(text_mask_excluding_eos, (1, -1), value=True)
+        text_mask = text_mask & (text != 0)
+        assert not self.cleared
+
+        text_embed = self.clip.encode_text(text)
+        text_encodings = self.text_encodings
+        text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.0)
+        del self.text_encodings
+        return EmbeddedText(text_embed.float(), text_encodings.float())
+
+    @torch.no_grad()
+    def embed_image(self, image):
+        assert not self.cleared
+        image_embed = self.clip.encode_image(image)
+        return EmbeddedImage(image_embed.float(), None)
+
+
 class OpenClipAdapter(BaseClipAdapter):
     def __init__(self, path: str):
         clip, _, preprocess = open_clip.create_model_and_transforms(model_name=path)

@@ -1,10 +1,10 @@
-import math
 import torch
 import torch.nn.functional as F
 import lightning.pytorch as pl
 from rotary_embedding_torch import RotaryEmbedding
 
 from torch import nn
+from einops import repeat
 
 
 class LayerNorm(nn.LayerNorm):
@@ -236,7 +236,7 @@ class PriorTransformer(pl.LightningModule):
         final_ln,
         clip_dim,
         bias=False,
-        dropout=0.0,
+        attn_dropout=0.0,
         ml_expansion_factor=4,
         num_diffusion_timesteps=1000,
         causal=True,
@@ -274,7 +274,7 @@ class PriorTransformer(pl.LightningModule):
             num_layers=num_layers,
             num_heads=num_heads,
             bias=bias,
-            dropout=dropout,
+            dropout=attn_dropout,
             mlp_expansion_factor=ml_expansion_factor,
             causal=causal,
         )
@@ -289,13 +289,30 @@ class PriorTransformer(pl.LightningModule):
         timesteps,
         text_emb=None,
         text_enc=None,
+        text_image_dropout=0.0,
     ):
         bsz = x.shape[0]
 
-        time_emb = self.to_time_embed(timesteps)
-        text_enc = self.text_enc_proj(text_enc)
-        text_emb = self.text_emb_proj(text_emb)
-        x = self.clip_img_proj(x)
+        # generate masks for dropout on the text and image inputs
+        # do it along the batch dimension
+
+        text_drop_mask = (
+            torch.rand(bsz, device=x.device) > text_image_dropout
+        )  # less than so that we can use 0.0 for no dropout
+        img_drop_mask = torch.rand(bsz, device=x.device) > text_image_dropout
+
+        time_emb = self.to_time_embed(timesteps)  # [bsz, emb_dim]
+        text_enc = self.text_enc_proj(text_enc)  # [bsz, ctx_len, emb_dim]
+        text_emb = self.text_emb_proj(text_emb)  # [bsz, emb_dim]
+
+        x = self.clip_img_proj(x)  # [bsz, emb_dim]
+
+        # apply dropout masks
+        text_enc = text_enc * repeat(
+            text_drop_mask, "b -> b s z", s=self.ctx_len, z=self.emb_dim
+        )
+        text_emb = text_emb * repeat(text_drop_mask, "b -> b z", z=self.emb_dim)
+        x = x * repeat(img_drop_mask, "b -> b z", z=self.emb_dim)
 
         input_seq = [
             text_enc,
