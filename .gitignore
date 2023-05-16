@@ -172,3 +172,8 @@ random.sh
 
 # checkpoints
 checkpoints/
+
+# slurm
+*.out
+*.err
+slurm-*
