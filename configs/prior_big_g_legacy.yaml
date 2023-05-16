@@ -5,7 +5,7 @@ model:
     optimizer_config:
       target: "torch.optim.AdamW"
       params:
-        lr: 1.0e-4
+        lr: 1e-4
         betas: [0.9, 0.999]
         eps: 1.0e-08
         weight_decay: 0.01
@@ -24,7 +24,7 @@ model:
     noise_scheduler_config:
       target: "prior.gaussian_diffusion.NoiseScheduler"
       params:
-        beta_schedule: "cosine"
+        beta_schedule: "cubic"
         timesteps: 1000
         loss_type: "l2"
     prior_transformer_config:
@@ -53,9 +53,9 @@ trainer:
   limit_val_batches: 1
   val_check_interval: 200
   enable_checkpointing: true
-  checkpoint_dirpath: "2048-checkpoints"
+  checkpoint_dirpath: "checkpoints-cubic"
   checkpoint_save_top_k: 4
   checkpoint_monitor: "step"
   checkpoint_mode: "max"
-  checkpoint_filename: "prior-big-g-2048-{step:06d}"
+  checkpoint_filename: "prior-big-g-{step:06d}"
   checkpoint_train_time_interval_minutes: 60
