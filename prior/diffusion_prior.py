@@ -480,8 +480,6 @@ class LegacyDiffusionPrior(pl.LightningModule):
         image_channels=3,
         sample_timesteps=None,
         cond_drop_prob=0.0,
-        text_cond_drop_prob=None,
-        image_cond_drop_prob=None,
         predict_x_start=True,
         predict_v=False,
         condition_on_text_encodings=True,  # the paper suggests this is needed, but you can turn it off for your CLIP preprocessed text embed -> image embed training
@@ -517,12 +515,11 @@ class LegacyDiffusionPrior(pl.LightningModule):
         self.channels = default(
             image_channels, lambda: self.language_model.image_channels
         )
-        self.text_cond_drop_prob = default(text_cond_drop_prob, cond_drop_prob)
-        self.image_cond_drop_prob = default(image_cond_drop_prob, cond_drop_prob)
 
-        self.can_classifier_guidance = (
-            self.text_cond_drop_prob > 0.0 and self.image_cond_drop_prob > 0.0
-        )
+        self.cond_drop_prob = cond_drop_prob
+
+        self.can_classifier_guidance = self.cond_drop_prob > 0.0
+
         self.condition_on_text_encodings = condition_on_text_encodings
 
         # in paper, they do not predict the noise, but predict x0 directly for image embedding, claiming empirically better results. I'll just offer both.
@@ -889,6 +886,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
             times,
             text_emb=text_cond["text_embed"],
             text_enc=text_cond["text_encodings"],
+            text_image_dropout=self.cond_drop_prob,
         )
 
         if self.predict_x_start and self.training_clamp_l2norm:
