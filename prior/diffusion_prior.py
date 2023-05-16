@@ -750,7 +750,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
         return pred, x_start
 
     @torch.no_grad()
-    def p_sample_loop_ddpm(self, shape, text_cond, cond_scale=1.0):
+    def p_sample_loop_ddpm(self, shape, text_cond, cond_scale=1.0, callback=None):
         batch, device = shape[0], self.device
 
         image_embed = torch.randn(shape, device=device)
@@ -774,6 +774,10 @@ class LegacyDiffusionPrior(pl.LightningModule):
                 self_cond=self_cond,
                 cond_scale=cond_scale,
             )
+
+            if callback is not None:
+                ret_img_embed = self.unscale_image_embedding(image_embed)
+                callback(ret_img_embed, i)
 
         if self.sampling_final_clamp_l2norm and self.predict_x_start:
             image_embed = self.l2norm_clamp_embed(image_embed)
@@ -927,7 +931,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
 
     @torch.no_grad()
     @eval_decorator
-    def sample(self, text, num_samples_per_batch=2, cond_scale=1.0, timesteps=None):
+    def sample(self, text, num_samples_per_batch=2, cond_scale=1.0, timesteps=None, callback=None):
         timesteps = default(timesteps, self.sample_timesteps)
 
         # in the paper, what they did was
@@ -949,6 +953,7 @@ class LegacyDiffusionPrior(pl.LightningModule):
             text_cond=text_cond,
             cond_scale=cond_scale,
             timesteps=timesteps,
+            callback=callback,
         )
 
         # retrieve original unscaled image embed
