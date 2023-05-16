@@ -101,6 +101,14 @@ def linear_beta_schedule(timesteps):
     return torch.linspace(beta_start, beta_end, timesteps, dtype=torch.float64)
 
 
+def cubic_beta_schedule(timesteps):
+    betas = torch.exp(
+        (((torch.linspace(0, 5.7, timesteps, dtype=torch.float64) - 2.9) ** 3) / 5)
+        - 4.6
+    )
+    return torch.clip(betas, 0, 1)
+
+
 def quadratic_beta_schedule(timesteps):
     scale = 1000 / timesteps
     beta_start = scale * 0.0001
@@ -143,6 +151,8 @@ class NoiseScheduler(pl.LightningModule):
             betas = 1.0 / torch.linspace(timesteps, 1, timesteps)
         elif beta_schedule == "sigmoid":
             betas = sigmoid_beta_schedule(timesteps)
+        elif beta_schedule == "cubic":
+            betas = cubic_beta_schedule(timesteps)
         else:
             raise NotImplementedError()
 
