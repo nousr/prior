@@ -256,8 +256,8 @@ class DiffusionPrior(pl.LightningModule):
     def p_mean_variance(self, x, t, text_embedding, text_encoding, cond_scale):
         # TODO: check that model was trained with dropout
         # TODO: do classifier free guidance
-        predicted_tokens = self.prior_transformer.forward(
-            x, t, text_embedding, text_encoding
+        predicted_tokens = self.prior_transformer.forward_with_cond_scale(
+            x, t, text_embedding, text_encoding, cond_scale
         )
 
         if self.parameterization == "v":
@@ -700,11 +700,12 @@ class LegacyDiffusionPrior(pl.LightningModule):
             cond_scale != 1.0 and not self.can_classifier_guidance
         ), "the model was not trained with conditional dropout, and thus one cannot use classifier free guidance (cond_scale anything other than 1)"
 
-        pred = self.net.forward(
-            x,
-            t,
+        pred = self.net.forward_with_cond_scale(
+            x=x,
+            timesteps=t,
             text_emb=text_cond["text_embed"],
             text_enc=text_cond["text_encodings"],
+            cond_scale=cond_scale,
         )
 
         if self.predict_v:
@@ -810,11 +811,12 @@ class LegacyDiffusionPrior(pl.LightningModule):
 
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
 
-            pred = self.net.forward(
-                image_embed,
-                times,
+            pred = self.net.forward_with_cond_scale(
+                x=image_embed,
+                timesteps=times,
                 text_emb=text_cond["text_embed"],
                 text_enc=text_cond["text_encodings"],
+                cond_scale=cond_scale,
             )
 
             # derive x0

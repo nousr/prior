@@ -283,6 +283,22 @@ class PriorTransformer(pl.LightningModule):
 
         self.prd_emb = nn.Parameter(torch.randn((1, 1, emb_dim)))
 
+    def forward_with_cond_scale(
+        self,
+        *args,
+        **kwargs,
+    ):
+        cond_scale = kwargs.pop("cond_scale", 1.0)
+
+        logits = self.forward(*args, **kwargs)
+
+        if cond_scale == 1:
+            return logits
+
+        null_logits = self.forward(*args, text_image_dropout=1.0, **kwargs)
+
+        return null_logits + (logits - null_logits) * cond_scale
+
     def forward(
         self,
         x,
