@@ -56,7 +56,11 @@ def seed_everything(seed: int):
 
 def get_wds_dataset(urls: str, epoch_length: int = None):
     def filter_missing(x):
-        return ("json" in x and "jpg" in x) and ("caption" in x["json"]) and (x["json"]["caption"] != None)
+        return (
+            ("json" in x and "jpg" in x)
+            and ("caption" in x["json"])
+            and (x["json"]["caption"] != None)
+        )
 
     dataset = (
         wds.WebDataset(
