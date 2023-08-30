@@ -41,8 +41,8 @@ model:
         causal: false
 trainer:
   ckpt_path: null
-  train_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/{00000..99998}.tar -"
-  val_data_urls: "pipe: aws s3 cp --quiet s3://stability-west/laion_coyo_dedupedv3/99999.tar -"
+  train_data_urls: "data_url"
+  val_data_urls: "data_url"
   epoch_length: 2037612045
   train_batch_size: 200
   valid_batch_size: 32
