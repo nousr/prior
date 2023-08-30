@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:8
 #SBATCH --ntasks-per-node=8
 #SBATCH --mem=0
-#SBATCH --account=controlnet
+#SBATCH --account=account_name
 #SBATCH --output=%x_%j.out
 
 eval "$(conda shell.bash hook)"
