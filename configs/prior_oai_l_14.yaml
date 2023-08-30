@@ -41,8 +41,8 @@ model:
         causal: false
 trainer:
   ckpt_path: null
-  train_data_urls: "/home/nousr/data/image/laion_coyo_local/{00000..00098}.tar"
-  val_data_urls: "/home/nousr/data/image/laion_coyo_local/00099.tar"
+  train_data_urls: "data_url"
+  val_data_urls: "data_url"
   epoch_length: null
   train_batch_size: 256
   valid_batch_size: 32
